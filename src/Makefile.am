@@ -27,8 +27,8 @@ budgie_media_player_SOURCES = \
 	budgie-media-label.h \
 	budgie-media-view.c \
 	budgie-media-view.h \
-	budgie-settings-view.c \
-	budgie-settings-view.h \
+	budgie-settings-dialog.c \
+	budgie-settings-dialog.h \
 	budgie-status-area.c \
 	budgie-status-area.h \
 	util.c \

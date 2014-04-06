@@ -215,7 +215,7 @@ static void budgie_control_bar_init(BudgieControlBar *self)
 
         /* settings */
         settings = new_button_with_icon(self->icon_theme, "preferences-system-symbolic",
-                TRUE, TRUE, "Preferences");
+                TRUE, FALSE, "Preferences");
         data = g_malloc(sizeof(guint));
         *data = BUDGIE_ACTION_SETTINGS;
         self->settings = settings;
@@ -266,7 +266,8 @@ void budgie_control_bar_set_show_playback(BudgieControlBar *self, gboolean show)
         GtkStyleContext *context;
         GtkWidget *extras[] = {
                 self->random,
-                self->repeat
+                self->repeat,
+                self->settings
         };
 
         context = gtk_widget_get_style_context(GTK_WIDGET(self));
@@ -303,9 +304,6 @@ void budgie_control_bar_set_action_enabled(BudgieControlBar *self,
                         break;
                 case BUDGIE_ACTION_PAUSE:
                         wid = GTK_WIDGET(self->pause);
-                        break;
-                case BUDGIE_ACTION_SETTINGS:
-                        wid = GTK_WIDGET(self->settings);
                         break;
                 default:
                         break;

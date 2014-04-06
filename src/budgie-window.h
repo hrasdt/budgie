@@ -31,7 +31,6 @@
 
 #include "budgie-status-area.h"
 #include "budgie-control-bar.h"
-#include "budgie-settings-view.h"
 #include "util.h"
 #include "db/budgie-db.h"
 
@@ -87,7 +86,6 @@ struct _BudgieWindow {
         GtkWidget *next;
         GtkWidget *volume;
         GtkWidget *search;
-        GtkWidget *settings;
         GstElement *gst_player;
 
         GtkCssProvider *css_provider;

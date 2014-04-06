@@ -30,6 +30,7 @@
 #include "common.h"
 #include "budgie-window.h"
 #include "budgie-media-view.h"
+#include "budgie-settings-dialog.h"
 
 /* Private storage */
 struct _BudgieWindowPrivate {
@@ -97,8 +98,21 @@ static GMenuModel *create_cog_menu(void)
         menu = g_menu_new();
         g_menu_append(menu, "Repeat", "app.repeat");
         g_menu_append(menu, "Random", "app.random");
+        g_menu_append(menu, "Settings", "app.settings");
 
         return G_MENU_MODEL(menu);
+}
+
+void settings_cb(GSimpleAction *action, GVariant *param, gpointer userdata)
+{
+        GtkWidget *dialog;
+
+        dialog = budgie_settings_dialog_new();
+        gtk_window_set_transient_for(GTK_WINDOW(dialog),
+                GTK_WINDOW(userdata));
+        gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
 }
 
 void budgie_setup_actions(BudgieWindow *self)
@@ -119,6 +133,12 @@ void budgie_setup_actions(BudgieWindow *self)
                 BUDGIE_REPEAT);
         g_action_map_add_action(G_ACTION_MAP(app), action);
         g_object_unref(action);
+
+        /* Settings */
+        action = G_ACTION(g_simple_action_new("settings", NULL));
+        g_signal_connect(action, "activate", G_CALLBACK(settings_cb), self);
+        g_action_map_add_action(G_ACTION_MAP(app), action);
+        g_object_unref(action);
 }
 
 static void budgie_window_init(BudgieWindow *self)
@@ -133,7 +153,6 @@ static void budgie_window_init(BudgieWindow *self)
         GtkWidget *toolbar;
         GtkWidget *south_reveal;
         GtkWidget *layout;
-        GtkWidget *settings_view;
         GstBus *bus;
         GSList *tracks;
         GdkVisual *visual;
@@ -152,6 +171,10 @@ static void budgie_window_init(BudgieWindow *self)
         g_signal_connect(self->priv->settings, "changed",
                 G_CALLBACK(settings_changed), self);
 
+        /* Update when key changes */
+        g_settings_bind(self->priv->settings, BUDGIE_DARK, gtk_settings_get_default(),
+                "gtk-application-prefer-dark-theme", G_SETTINGS_BIND_DEFAULT);
+                
         /* Retrieve media directories */
         media_dirs = g_settings_get_strv(self->priv->settings, BUDGIE_MEDIA_DIRS);
         if (g_strv_length(media_dirs) == 0) {
@@ -298,11 +321,6 @@ static void budgie_window_init(BudgieWindow *self)
              GDK_LEAVE_NOTIFY_MASK | GDK_POINTER_MOTION_MASK |
              GDK_POINTER_MOTION_HINT_MASK | GDK_KEY_RELEASE_MASK);
 
-        /* Settings view */
-        settings_view = budgie_settings_view_new();
-        gtk_stack_add_named(GTK_STACK(stack), settings_view, "settings");
-        self->settings = settings_view;
-
         /* Initialise gstreamer */
         self->gst_player = gst_element_factory_make("playbin", "player");
         bus = gst_element_get_bus(self->gst_player);
@@ -408,8 +426,6 @@ static void play_cb(GtkWidget *widget, gpointer userdata)
                 self->priv->full_screen = FALSE;
                 full_screen_cb(widget, userdata);
         }
-        if (!g_str_equal(self->priv->current_page, "settings"))
-                gtk_stack_set_visible_child_name(GTK_STACK(self->stack), next_child);
 
         self->priv->current_page = next_child;
 
@@ -751,10 +767,7 @@ static void toolbar_cb(BudgieControlBar *bar, int action, gboolean toggle, gpoin
                         next_cb(GTK_WIDGET(bar), userdata);
                         break;
                 case BUDGIE_ACTION_SETTINGS:
-                        if (toggle)
-                                gtk_stack_set_visible_child_name(GTK_STACK(self->stack), "settings");
-                        else
-                                gtk_stack_set_visible_child_name(GTK_STACK(self->stack), self->priv->current_page);
+                        settings_cb(NULL, NULL, userdata);
                         break;
                 default:
                         break;
