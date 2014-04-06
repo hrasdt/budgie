@@ -19,6 +19,19 @@ desktopdir=$(datadir)/applications
 desktop_DATA = \
 	budgie-media-player.desktop
 
+resource_files = $(shell glib-compile-resources --sourcedir=$(srcdir) --generate-dependencies $(srcdir)/budgie.gresource.xml)
+dialog_resources = $(shell glib-compile-resources --sourcedir=$(srcdir) --generate-dependencies $(srcdir)/session-dialog.gresource.xml)
+
+BUILT_SOURCES = \
+	budgie-resources.h \
+	budgie-resources.c
+
+budgie-resources.h: budgie.gresource.xml $(resource_files)
+	glib-compile-resources --target=$@ --sourcedir=$(srcdir) --generate-header --c-name budgie $<
+
+budgie-resources.c: budgie.gresource.xml $(resource_files)
+	glib-compile-resources --target=$@ --sourcedir=$(srcdir) --generate-source --c-name budgie $<
+
 EXTRA_DIST = \
 	album-base.png \
 	album-overlay.png \
@@ -37,7 +50,9 @@ EXTRA_DIST = \
 	budgie-512x512.png \
 	budgie-64x64.png \
 	budgie-72x72.png \
-	budgie-96x96.png
+	budgie-96x96.png \
+	preferences.ui \
+	budgie.gresource.xml
 
 # Our PNG's
 icon_sizes = \

@@ -8,5 +8,5 @@ NULL =
 CLEANFILES =
 
 SUBDIRS = \
-	src \
-	data
+	data \
+	src

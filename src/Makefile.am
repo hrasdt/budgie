@@ -18,6 +18,7 @@ libbudgiedb_la_LIBADD = \
 	-lgdbm
 
 budgie_media_player_SOURCES = \
+	../data/budgie-resources.c \
 	budgie-window.c \
 	budgie-window.h \
 	budgie-control-bar.c \
