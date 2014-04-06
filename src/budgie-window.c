@@ -364,8 +364,16 @@ static void budgie_window_dispose(GObject *object)
 
         self = BUDGIE_WINDOW(object);
 
-        if (self->priv->uri)
+        if (self->priv->uri) {
                 g_free(self->priv->uri);
+                self->priv->uri = NULL;
+        }
+
+        if (self->gst_player) {
+                gst_element_set_state(GST_ELEMENT(self->gst_player), GST_STATE_NULL);
+                gst_object_unref(self->gst_player);
+                self->gst_player = NULL;
+        }
 
         if (self->media_dirs) {
                 g_strfreev(self->media_dirs);
