@@ -264,6 +264,10 @@ void budgie_control_bar_set_show_video(BudgieControlBar *self, gboolean show)
 void budgie_control_bar_set_show_playback(BudgieControlBar *self, gboolean show)
 {
         GtkStyleContext *context;
+        GtkWidget *extras[] = {
+                self->random,
+                self->repeat
+        };
 
         context = gtk_widget_get_style_context(GTK_WIDGET(self));
 
@@ -273,6 +277,11 @@ void budgie_control_bar_set_show_playback(BudgieControlBar *self, gboolean show)
         } else {
                 gtk_style_context_remove_class(context, "view");
                 gtk_style_context_remove_class(context, "content-view");
+        }
+
+        /* Just avoid future off-by-ones */
+        for (int i = 0; i < sizeof(extras)/sizeof(GtkWidget*); i++) {
+                gtk_widget_set_visible(extras[i], show);
         }
         gtk_widget_set_visible(self->playback, show);
 }

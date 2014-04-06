@@ -69,6 +69,7 @@ static void do_activate(GApplication *app, gpointer userdata)
 
         /* Window shows itself right now */
         window = budgie_window_new(GTK_APPLICATION(app));
+        budgie_setup_actions(window);
 }
 
 int main(int argc, char **argv)

@@ -105,4 +105,6 @@ GType budgie_window_get_type(void);
 /* BudgieWindow methods */
 BudgieWindow* budgie_window_new(GtkApplication *app);
 
+void budgie_setup_actions(BudgieWindow *self);
+
 #endif /* budgie_window_h */

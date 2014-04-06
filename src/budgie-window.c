@@ -89,6 +89,38 @@ static void budgie_window_class_init(BudgieWindowClass *klass)
         g_object_class->dispose = &budgie_window_dispose;
 }
 
+static GMenuModel *create_cog_menu(void)
+{
+        GMenu *menu = NULL;
+
+        /* UGLY. go xml :) */
+        menu = g_menu_new();
+        g_menu_append(menu, "Repeat", "app.repeat");
+        g_menu_append(menu, "Random", "app.random");
+
+        return G_MENU_MODEL(menu);
+}
+
+void budgie_setup_actions(BudgieWindow *self)
+{
+        GApplication *app;
+        GAction *action = NULL;
+
+        g_object_get(self, "application", &app, NULL);
+
+        /* Random */
+        action = g_settings_create_action(self->priv->settings,
+                BUDGIE_RANDOM);
+        g_action_map_add_action(G_ACTION_MAP(app), action);
+        g_object_unref(action);
+
+        /* Repeat */
+        action = g_settings_create_action(self->priv->settings,
+                BUDGIE_REPEAT);
+        g_action_map_add_action(G_ACTION_MAP(app), action);
+        g_object_unref(action);
+}
+
 static void budgie_window_init(BudgieWindow *self)
 {
         GtkWidget *header;
@@ -109,6 +141,10 @@ static void budgie_window_init(BudgieWindow *self)
         gchar **media_dirs = NULL;
         const gchar *dirs[3];
         gboolean b_value;
+
+        /* TEMPORARY: We're going with composite widgets soon! */
+        GtkWidget *menu_button;
+        GtkWidget *image;
 
         self->priv = budgie_window_get_instance_private(self);
         /* Init our settings */
@@ -156,6 +192,14 @@ static void budgie_window_init(BudgieWindow *self)
         /* Always show the close button */
         gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), TRUE);
         gtk_window_set_titlebar(GTK_WINDOW(self), header);
+
+        menu_button = gtk_menu_button_new();
+        gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_button),
+                create_cog_menu());
+        gtk_menu_button_set_use_popover(GTK_MENU_BUTTON(menu_button), TRUE);
+        image = gtk_image_new_from_icon_name("emblem-system-symbolic", GTK_ICON_SIZE_BUTTON);
+        gtk_header_bar_pack_end(GTK_HEADER_BAR(header), menu_button);
+        gtk_container_add(GTK_CONTAINER(menu_button), image);
 
         /* Media control buttons, placed on headerbar */
         prev = new_button_with_icon(self->icon_theme, "media-seek-backward-symbolic",
