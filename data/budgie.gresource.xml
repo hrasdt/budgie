@@ -2,6 +2,7 @@
 <gresources>
         <gresource prefix="/com/evolve-os/budgie/media-player">
                 <file compressed="true">preferences.ui</file>
+                <file compressed="true">status-area.ui</file>
                 <file>app.css</file>
         </gresource>
 </gresources>

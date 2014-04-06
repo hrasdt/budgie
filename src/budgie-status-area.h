@@ -41,19 +41,14 @@ typedef struct _BudgieStatusAreaPrivate BudgieStatusAreaPrivate;
 
 /* BudgieStatusArea object */
 struct _BudgieStatusArea {
-        GtkEventBox parent;
-
-        GtkWidget *label;
-        GtkWidget *time_label;
-        GtkWidget *remaining_label;
-        GtkWidget *slider;
+        GtkGrid parent;
 
         BudgieStatusAreaPrivate *priv;
 };
 
 /* BudgieStatusArea class definition */
 struct _BudgieStatusAreaClass {
-        GtkEventBoxClass parent_class;
+        GtkGridClass parent_class;
 };
 
 GType budgie_status_area_get_type(void);

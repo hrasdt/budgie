@@ -56,6 +56,7 @@ EXTRA_DIST = \
 	budgie-72x72.png \
 	budgie-96x96.png \
 	preferences.ui \
+	status-area.ui \
 	budgie.gresource.xml
 
 # Our PNG's

@@ -28,9 +28,13 @@
 /* Private storage */
 struct _BudgieStatusAreaPrivate {
         gulong seek_id;
+        GtkWidget *label;
+        GtkWidget *time_label;
+        GtkWidget *slider;
+
 };
 
-G_DEFINE_TYPE_WITH_PRIVATE(BudgieStatusArea, budgie_status_area, GTK_TYPE_EVENT_BOX)
+G_DEFINE_TYPE_WITH_CODE(BudgieStatusArea, budgie_status_area, GTK_TYPE_GRID, G_ADD_PRIVATE(BudgieStatusArea))
 
 static void changed_cb(GtkWidget *widget, gdouble value, gpointer userdata);
 
@@ -51,56 +55,29 @@ static void budgie_status_area_class_init(BudgieStatusAreaClass *klass)
                 G_TYPE_OBJECT, G_SIGNAL_RUN_FIRST,
                 0, NULL, NULL, NULL, G_TYPE_NONE,
                 1, G_TYPE_INT64);
+
+        /* Set our template */
+        gtk_widget_class_set_template_from_resource(GTK_WIDGET_CLASS(klass),
+                "/com/evolve-os/budgie/media-player/status-area.ui");
+
+        /* Map widgets */
+        gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), BudgieStatusArea, label);
+        gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), BudgieStatusArea, time_label);
+        gtk_widget_class_bind_template_child_private(GTK_WIDGET_CLASS(klass), BudgieStatusArea, slider);
 }
 
 static void budgie_status_area_init(BudgieStatusArea *self)
 {
-        GtkWidget *label;
-        GtkWidget *time_label;
-        GtkWidget *slider;
-        GtkStyleContext *context;
-        GtkWidget *box, *bottom, *top;
+        gtk_widget_init_template(GTK_WIDGET(self));
 
         self->priv = budgie_status_area_get_instance_private(self);
 
-        box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        self->priv->seek_id = g_signal_connect(self->priv->slider,
+                "value-changed", G_CALLBACK(changed_cb), self);
 
-        top = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-        gtk_box_pack_start(GTK_BOX(box), top, TRUE, TRUE, 0);
-
-        /* Construct our main label */
-        label = gtk_label_new("<b>Budgie Media Player</b>");
-        gtk_misc_set_alignment(GTK_MISC(label), 0.0, 0.0);
-        gtk_label_set_use_markup(GTK_LABEL(label), TRUE);
-        gtk_box_pack_start(GTK_BOX(top), label, TRUE, TRUE, 0);
-        gtk_widget_set_name(label, "title");
-        gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
-        self->label = label;
-
-        context = gtk_widget_get_style_context(label);
-
-        /* Bottom row */
-        bottom = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-        gtk_box_pack_start(GTK_BOX(box), bottom, FALSE, FALSE, 0);
-
-        /* Time passed */
-        time_label = gtk_label_new("");
-        context = gtk_widget_get_style_context(time_label);
-        gtk_style_context_add_class(context, "info-label");
-        gtk_box_pack_end(GTK_BOX(top), time_label, FALSE, FALSE, 0);
-        self->time_label = time_label;
-
-        /* Slider */
-        slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL,
-            0.0, 1.0, 1.0/100);
-        gtk_box_pack_start(GTK_BOX(bottom), slider, TRUE, TRUE, 2);
-        self->slider = slider;
-        gtk_scale_set_draw_value(GTK_SCALE(slider), FALSE);
-        gtk_widget_set_can_focus(slider, FALSE);
-        self->priv->seek_id = g_signal_connect(slider, "value-changed",
-                G_CALLBACK(changed_cb), self);
-
-        gtk_container_add(GTK_CONTAINER(self), box);
+        gtk_label_set_markup(GTK_LABEL(self->priv->label),
+                "<b>Budgie Media Player</b>");
+        gtk_label_set_text(GTK_LABEL(self->priv->time_label), "");
 
         gtk_widget_set_size_request(GTK_WIDGET(self), 400, -1);
 }
@@ -124,14 +101,15 @@ void budgie_status_area_set_media(BudgieStatusArea *self, MediaInfo *info)
 {
         gchar *title_string = NULL;
 
-        if (info->artist)
+        if (info->artist) {
                 title_string = g_markup_printf_escaped("<b>%s</b> <i>by</i> <b>%s</b>",
                         info->title, info->artist);
-        else
+        } else {
                 title_string = g_markup_printf_escaped("<b>%s</b>", info->title);
+        }
 
-        gtk_label_set_markup(GTK_LABEL(self->label), title_string);
-        gtk_label_set_max_width_chars(GTK_LABEL(self->label), 1);
+        gtk_label_set_markup(GTK_LABEL(self->priv->label), title_string);
+        gtk_label_set_max_width_chars(GTK_LABEL(self->priv->label), 1);
         gtk_widget_queue_draw(GTK_WIDGET(self));
 
         g_free(title_string);
@@ -145,16 +123,12 @@ void budgie_status_area_set_media_time(BudgieStatusArea *self, gint64 max, gint6
 
         /* Clear info */
         if (max < 0) {
-                gtk_widget_set_visible(self->slider, FALSE);
+                gtk_widget_set_visible(self->priv->slider, FALSE);
                 return;
         }
-        gtk_widget_set_visible(self->slider, TRUE);
+        gtk_widget_set_visible(self->priv->slider, TRUE);
         gint elapsed;
 
-        /*
-        __attribute__ ((unused)) gint64 remaining, 
-        remaining = (max - current)/GST_SECOND;
-        */
         elapsed = current/GST_SECOND;
         time_string = format_seconds(elapsed, FALSE);
 
@@ -163,14 +137,14 @@ void budgie_status_area_set_media_time(BudgieStatusArea *self, gint64 max, gint6
         max /= GST_SECOND;
         total_string = format_seconds(max, FALSE);
 
-        g_signal_handler_block(self->slider, self->priv->seek_id);
-        gtk_range_set_range(GTK_RANGE(self->slider), 0, max);
-        gtk_range_set_value(GTK_RANGE(self->slider), current);
-        g_signal_handler_unblock(self->slider, self->priv->seek_id);
+        g_signal_handler_block(self->priv->slider, self->priv->seek_id);
+        gtk_range_set_range(GTK_RANGE(self->priv->slider), 0, max);
+        gtk_range_set_value(GTK_RANGE(self->priv->slider), current);
+        g_signal_handler_unblock(self->priv->slider, self->priv->seek_id);
 
         /* Update labels */
         lab_string = g_strdup_printf("%s / %s", time_string, total_string);
-        gtk_label_set_markup(GTK_LABEL(self->time_label), lab_string);
+        gtk_label_set_markup(GTK_LABEL(self->priv->time_label), lab_string);
 
         g_free(lab_string);
         g_free(time_string);
