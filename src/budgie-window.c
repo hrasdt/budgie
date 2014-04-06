@@ -380,6 +380,11 @@ static void budgie_window_dispose(GObject *object)
                 self->media_dirs = NULL;
         }
 
+        if (self->db) {
+                g_object_unref(self->db);
+                self->db = NULL;
+        }
+
         /* Destruct */
         G_OBJECT_CLASS(budgie_window_parent_class)->dispose(object);
 }
