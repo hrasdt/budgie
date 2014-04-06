@@ -27,23 +27,25 @@
 
 static BudgieWindow *window;
 
+#define foreach_string(x,y,i) const char *y = NULL;int i;\
+         for (i=0; (y = *(x+i)) != NULL; i++)
+
 static void perform_migration(void)
 {
-        int i;
         gchar *path;
         const gchar *config;
         GFile *file;
-        guint path_len;
 
         const gchar* paths[] = {
                 "idmp-1.db",
+                NULL
         };
-        path_len = 1;
 
         /* $HOME/.config/ */
         config = g_get_user_config_dir();
-        for (i=0; i < path_len; i++) {
-                path = g_strdup_printf("%s/%s", config, paths[i]);
+
+        foreach_string(paths, suffix, i) {
+                path = g_strdup_printf("%s/%s", config, suffix);
                 file = g_file_new_for_path(path);
                 /* Attempt to delete old database files */
                 if (g_file_query_exists(file, NULL)) {
