@@ -53,20 +53,28 @@ void free_media_info(gpointer p_info)
         MediaInfo *info;
 
         info = (MediaInfo*)p_info;
-        if (info->title)
+        if (info->title) {
                 g_free(info->title);
-        if (info->artist)
+        }
+        if (info->artist) {
                 g_free(info->artist);
-        if (info->album)
+        }
+        if (info->album) {
                 g_free(info->album);
-        if (info->band)
+        }
+        if (info->band) {
                 g_free(info->band);
-        if (info->genre)
+        }
+        if (info->genre) {
                 g_free(info->genre);
-        if (info->path)
+        }
+        if (info->path) {
                 g_free(info->path);
-        if (info->mime)
+        }
+        if (info->mime) {
                 g_free(info->mime);
+        }
+        g_free(info);
 }
 
 /* Initialisation */
@@ -320,8 +328,9 @@ gboolean budgie_db_search_field(BudgieDB *self,
                         default:
                                 break;
                 }
-                if (!test)
+                if (!test) {
                         goto clear;
+                }
                 /* Test the search term */
                 switch (match) {
                         case MATCH_QUERY_END:
