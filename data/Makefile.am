@@ -26,6 +26,9 @@ BUILT_SOURCES = \
 	budgie-resources.h \
 	budgie-resources.c
 
+CLEANFILES = \
+	$(BUILT_SOURCES)
+
 budgie-resources.h: budgie.gresource.xml $(resource_files)
 	glib-compile-resources --target=$@ --sourcedir=$(srcdir) --generate-header --c-name budgie $<
 
