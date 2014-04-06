@@ -35,9 +35,6 @@
 #include "db/budgie-db.h"
 
 #define PLAYER_CSS "\
-.titlebar, .header {\
-    padding: 2px 2px 0px 2px;\
-}\
 GtkIconView,\
 GtkListBox {\
     background-color: transparent;\
