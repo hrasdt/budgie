@@ -145,7 +145,6 @@ static void budgie_window_init(BudgieWindow *self)
         gtk_window_set_position(GTK_WINDOW(self), GTK_WIN_POS_CENTER);
         gtk_window_set_icon_name(GTK_WINDOW(self), "budgie");
         gtk_window_set_wmclass(GTK_WINDOW(self), "Budgie", "Budgie");
-        g_signal_connect(self, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
         /* Icon theme for button utility */
         self->icon_theme = gtk_icon_theme_get_default();
