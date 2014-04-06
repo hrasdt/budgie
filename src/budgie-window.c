@@ -97,7 +97,6 @@ static void budgie_window_init(BudgieWindow *self)
         GtkWidget *stack;
         /* header buttons */
         GtkWidget *prev, *play, *pause, *next;
-        GtkWidget *search;
         GtkWidget *status;
         GtkWidget *view;
         GtkWidget *toolbar;
@@ -263,13 +262,6 @@ static void budgie_window_init(BudgieWindow *self)
         settings_view = budgie_settings_view_new();
         gtk_stack_add_named(GTK_STACK(stack), settings_view, "settings");
         self->settings = settings_view;
-
-        /* search entry */
-        search = gtk_search_entry_new();
-        gtk_entry_set_placeholder_text(GTK_ENTRY(search), "Search...");
-        gtk_header_bar_pack_end(GTK_HEADER_BAR(header), search);
-        gtk_widget_set_margin_end(search, 10);
-        self->search = search;
 
         /* Initialise gstreamer */
         self->gst_player = gst_element_factory_make("playbin", "player");
