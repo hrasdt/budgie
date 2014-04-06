@@ -45,7 +45,7 @@ struct _BudgieWindowPrivate {
         guintptr window_handle;
 };
 
-G_DEFINE_TYPE_WITH_PRIVATE(BudgieWindow, budgie_window, G_TYPE_OBJECT)
+G_DEFINE_TYPE_WITH_CODE(BudgieWindow, budgie_window, GTK_TYPE_WINDOW, G_ADD_PRIVATE(BudgieWindow))
 
 /* BudgieWindow prototypes */
 static void init_styles(BudgieWindow *self);
@@ -91,7 +91,6 @@ static void budgie_window_class_init(BudgieWindowClass *klass)
 
 static void budgie_window_init(BudgieWindow *self)
 {
-        GtkWidget *window;
         GtkWidget *header;
         GtkWidget *video;
         GtkWidget *stack;
@@ -137,18 +136,16 @@ static void budgie_window_init(BudgieWindow *self)
 
         init_styles(self);
 
-        /* Initialize our window */
-        window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-        self->window = window;
-        visual = gtk_widget_get_visual(window);
+        /* Initialize our visual */
+        visual = gtk_widget_get_visual(GTK_WIDGET(self));
 
         /* Set our window up */
-        gtk_window_set_title(GTK_WINDOW(window), "Music Player");
-        gtk_window_set_default_size(GTK_WINDOW(window), 950, 550);
-        gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
-        gtk_window_set_icon_name(GTK_WINDOW(window), "budgie");
-        gtk_window_set_wmclass(GTK_WINDOW(window), "Budgie", "Budgie");
-        g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+        gtk_window_set_title(GTK_WINDOW(self), "Music Player");
+        gtk_window_set_default_size(GTK_WINDOW(self), 950, 550);
+        gtk_window_set_position(GTK_WINDOW(self), GTK_WIN_POS_CENTER);
+        gtk_window_set_icon_name(GTK_WINDOW(self), "budgie");
+        gtk_window_set_wmclass(GTK_WINDOW(self), "Budgie", "Budgie");
+        g_signal_connect(self, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
         /* Icon theme for button utility */
         self->icon_theme = gtk_icon_theme_get_default();
@@ -159,7 +156,7 @@ static void budgie_window_init(BudgieWindow *self)
 
         /* Always show the close button */
         gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), TRUE);
-        gtk_window_set_titlebar(GTK_WINDOW(window), header);
+        gtk_window_set_titlebar(GTK_WINDOW(self), header);
 
         /* Media control buttons, placed on headerbar */
         prev = new_button_with_icon(self->icon_theme, "media-seek-backward-symbolic",
@@ -196,7 +193,7 @@ static void budgie_window_init(BudgieWindow *self)
 
         /* main layout */
         layout = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-        gtk_container_add(GTK_CONTAINER(window), layout);
+        gtk_container_add(GTK_CONTAINER(self), layout);
 
         /* Toolbar revealer */
         south_reveal = gtk_revealer_new();
@@ -252,7 +249,7 @@ static void budgie_window_init(BudgieWindow *self)
         /* Hook up events for video box */
         g_signal_connect(video, "motion-notify-event",
                 G_CALLBACK(motion_notify_cb), self);
-        g_signal_connect(window, "key-release-event",
+        g_signal_connect(self, "key-release-event",
                 G_CALLBACK(key_cb), self);
         gtk_widget_set_events (video, gtk_widget_get_events (video) |
              GDK_LEAVE_NOTIFY_MASK | GDK_POINTER_MOTION_MASK |
@@ -285,8 +282,8 @@ static void budgie_window_init(BudgieWindow *self)
         else
                 g_object_set(view, "database", self->db, NULL);
 
-        gtk_widget_realize(window);
-        gtk_widget_show_all(window);
+        gtk_widget_realize(GTK_WIDGET(self));
+        gtk_widget_show_all(GTK_WIDGET(self));
         budgie_control_bar_set_show_video(BUDGIE_CONTROL_BAR(toolbar), FALSE);
         budgie_control_bar_set_show_playback(BUDGIE_CONTROL_BAR(toolbar), FALSE);
         budgie_control_bar_set_action_enabled(BUDGIE_CONTROL_BAR(toolbar),
@@ -306,28 +303,24 @@ static void budgie_window_dispose(GObject *object)
 
         self = BUDGIE_WINDOW(object);
 
-        g_object_unref(self->icon_theme);
-        g_object_unref(self->css_provider);
-
         if (self->priv->uri)
                 g_free(self->priv->uri);
 
-        g_strfreev(self->media_dirs);
-        g_object_unref(self->priv->settings);
-        g_object_unref(self->db);
+        if (self->media_dirs) {
+                g_strfreev(self->media_dirs);
+                self->media_dirs = NULL;
+        }
 
-        gst_element_set_state(self->gst_player, GST_STATE_NULL);
-        gst_object_unref(self->gst_player);
         /* Destruct */
         G_OBJECT_CLASS(budgie_window_parent_class)->dispose(object);
 }
 
 /* Utility; return a new BudgieWindow */
-BudgieWindow* budgie_window_new(void)
+BudgieWindow* budgie_window_new(GtkApplication *app)
 {
         BudgieWindow *self;
 
-        self = g_object_new(BUDGIE_WINDOW_TYPE, NULL);
+        self = g_object_new(BUDGIE_WINDOW_TYPE, "application", app, NULL);
         return BUDGIE_WINDOW(self);
 }
 
@@ -490,13 +483,13 @@ static void full_screen_cb(GtkWidget *widget, gpointer userdata)
 
         self = BUDGIE_WINDOW(userdata);
         if (self->priv->full_screen) {
-                gtk_window_fullscreen(GTK_WINDOW(self->window));
+                gtk_window_fullscreen(GTK_WINDOW(self));
                 gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), FALSE);
                 budgie_control_bar_set_show_playback(BUDGIE_CONTROL_BAR(self->toolbar), TRUE);
                 budgie_control_bar_set_action_enabled(BUDGIE_CONTROL_BAR(self->toolbar),
                         BUDGIE_ACTION_SETTINGS, FALSE);
         } else {
-                gtk_window_unfullscreen(GTK_WINDOW(self->window));
+                gtk_window_unfullscreen(GTK_WINDOW(self));
                 gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), TRUE);
                 budgie_control_bar_set_show_playback(BUDGIE_CONTROL_BAR(self->toolbar), FALSE);
                 budgie_control_bar_set_action_enabled(BUDGIE_CONTROL_BAR(self->toolbar),
@@ -511,7 +504,7 @@ static void aspect_cb(GtkWidget *widget, gpointer userdata)
         self = BUDGIE_WINDOW(userdata);
         g_object_set(self->gst_player, "force-aspect-ratio", self->priv->force_aspect, NULL);
         /* Otherwise we get dirty regions on our drawing area */
-        gtk_widget_queue_draw(self->window);
+        gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
 /* GStreamer callbacks */
@@ -646,7 +639,7 @@ static gboolean key_cb(GtkWidget *widget, GdkEventKey *event, gpointer userdata)
 
         if (!self->priv->full_screen)
                 return FALSE;
-        gtk_window_unfullscreen(GTK_WINDOW(self->window));
+        gtk_window_unfullscreen(GTK_WINDOW(self));
         gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), TRUE);
         self->priv->full_screen = FALSE;
         budgie_control_bar_set_action_state(BUDGIE_CONTROL_BAR(self->toolbar),

@@ -63,11 +63,9 @@ typedef struct _BudgieWindowPrivate BudgieWindowPrivate;
 
 /* BudgieWindow object */
 struct _BudgieWindow {
-        GObject parent;
+        GtkApplicationWindow parent;
 
         gchar **media_dirs;
-
-        GtkWidget *window;
         GtkWidget *header;
         GtkIconTheme *icon_theme;
 
@@ -98,13 +96,13 @@ struct _BudgieWindow {
 
 /* BudgieWindow class definition */
 struct _BudgieWindowClass {
-        GObjectClass parent_class;
+        GtkApplicationWindowClass parent_class;
 };
 
 
 GType budgie_window_get_type(void);
 
 /* BudgieWindow methods */
-BudgieWindow* budgie_window_new(void);
+BudgieWindow* budgie_window_new(GtkApplication *app);
 
 #endif /* budgie_window_h */

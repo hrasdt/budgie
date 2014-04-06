@@ -21,8 +21,11 @@
  * 
  */
 
-#include <stdlib.h>
 #include "budgie-window.h"
+
+#define BUDGIE_APP_ID "com.evolve-os.budgie.MediaPlayer"
+
+static BudgieWindow *window;
 
 static void perform_migration(void)
 {
@@ -51,18 +54,35 @@ static void perform_migration(void)
                 g_free(path);
         }
 }
+
+static void do_activate(GApplication *app, gpointer userdata)
+{
+        /* Already initialised and running */
+        if (window) {
+                gtk_widget_grab_focus(GTK_WIDGET(window));
+                return;
+        }
+        /* Allow error handling in future */
+        perform_migration();
+
+        /* Window shows itself right now */
+        window = budgie_window_new(GTK_APPLICATION(app));
+}
+
 int main(int argc, char **argv)
 {
-        BudgieWindow *window;
-        gtk_init(&argc, &argv);
+        gint ret;
+        GtkApplication *app = NULL;
         gst_init(&argc, &argv);
 
-        perform_migration();
-        window = budgie_window_new();
-        gtk_main();
+        /* In the future we'll support command line too */
+        app = gtk_application_new(BUDGIE_APP_ID, G_APPLICATION_FLAGS_NONE);
+        g_signal_connect(app, "activate", G_CALLBACK(do_activate), NULL);
 
-        g_object_unref(window);
+        ret = g_application_run(G_APPLICATION(app), argc, argv);
 
-        return EXIT_SUCCESS;
+        g_object_unref(app);
+
+        return ret;
 }
 
