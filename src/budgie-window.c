@@ -428,6 +428,7 @@ static void play_cb(GtkWidget *widget, gpointer userdata)
         }
 
         self->priv->current_page = next_child;
+        gtk_stack_set_visible_child_name(GTK_STACK(self->stack), next_child);
 
         uri = g_filename_to_uri(media->path, NULL, NULL);
         if (g_strcmp0(uri, self->priv->uri) != 0) {
