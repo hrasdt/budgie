@@ -402,14 +402,21 @@ static void init_styles(BudgieWindow *self)
 {
         GtkCssProvider *css_provider;
         GdkScreen *screen;
-        const gchar *data = PLAYER_CSS;
+        GFile *file = NULL;
+        GError *error = NULL;
 
         css_provider = gtk_css_provider_new();
-        gtk_css_provider_load_from_data(css_provider, data, (gssize)strlen(data)+1, NULL);
-        screen = gdk_screen_get_default();
-        gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(css_provider),
-                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        self->css_provider = css_provider;
+        file = g_file_new_for_uri("resource://com/evolve-os/budgie/media-player/app.css");
+        if (gtk_css_provider_load_from_file(css_provider, file, &error)) {
+                screen = gdk_screen_get_default();
+                gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(css_provider),
+                        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        } else {
+                g_warning("Your build of Budgie is *screwed* - %s", error->message);
+                g_error_free(error);
+        }
+        g_object_unref(file);
+        g_object_unref(css_provider);
 }
 
 static void play_cb(GtkWidget *widget, gpointer userdata)

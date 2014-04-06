@@ -1,0 +1,10 @@
+GtkIconView,
+GtkListBox {
+    background-color: transparent;
+}
+.info-label {
+    color: #707070;
+}
+.trough {
+    background-color: alpha(white, 0.0);
+}

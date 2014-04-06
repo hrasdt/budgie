@@ -34,18 +34,6 @@
 #include "util.h"
 #include "db/budgie-db.h"
 
-#define PLAYER_CSS "\
-GtkIconView,\
-GtkListBox {\
-    background-color: transparent;\
-}\
-.info-label {\
-    color: #707070;\
-}\
-.trough {\
-    background-color: alpha(white, 0.0);\
-}"
-
 typedef struct _BudgieWindow BudgieWindow;
 typedef struct _BudgieWindowClass   BudgieWindowClass;
 typedef struct _BudgieWindowPrivate BudgieWindowPrivate;
@@ -85,7 +73,6 @@ struct _BudgieWindow {
         GtkWidget *search;
         GstElement *gst_player;
 
-        GtkCssProvider *css_provider;
         BudgieWindowPrivate *priv;
 };
 

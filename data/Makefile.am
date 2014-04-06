@@ -36,6 +36,7 @@ budgie-resources.c: budgie.gresource.xml $(resource_files)
 	glib-compile-resources --target=$@ --sourcedir=$(srcdir) --generate-source --c-name budgie $<
 
 EXTRA_DIST = \
+	app.css \
 	album-base.png \
 	album-overlay.png \
 	budgie-media-player.desktop \
