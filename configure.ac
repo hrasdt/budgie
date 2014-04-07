@@ -33,6 +33,6 @@ AS_IF([test "x$enable_tests" = "xyes"],
 AM_CONDITIONAL([BUILD_TESTS], [test x$enable_tests = x"yes"])
 
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_FILES(Makefile src/Makefile data/Makefile)
+AC_CONFIG_FILES(Makefile src/Makefile data/Makefile tests/Makefile)
 AC_OUTPUT
 

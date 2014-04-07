@@ -9,4 +9,5 @@ CLEANFILES =
 
 SUBDIRS = \
 	data \
-	src
+	src \
+	tests
