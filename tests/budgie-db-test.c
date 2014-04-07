@@ -21,10 +21,55 @@
  * 
  */
 #include <stdlib.h>
+#include <stdio.h>
+#include <gio/gio.h>
 
 #include "budgie-db.h"
 
 int main(int argc, char **argv)
 {
-        return EXIT_SUCCESS;
+        BudgieDB *db = NULL;
+        GFile *file = NULL;
+        gchar *path = NULL;
+        int ret = EXIT_FAILURE;
+        int c;
+
+        fprintf(stderr, "This program will overwrite your existing budgie-db\n"
+                  "Only use if you know what you're doing!\n\n"
+                  "Type \"y\" to continue:  ");
+        c = getchar();
+        switch (c) {
+                case 'Y':
+                case 'y':
+                        break;
+                default:
+                        goto bail;
+        }
+        printf("Continuing\n");
+
+        path = g_strdup_printf("%s/%s", g_get_user_config_dir(), CONFIG_NAME);
+        file = g_file_new_for_path(path);
+        /* Attempt to delete old database files */
+        if (g_file_query_exists(file, NULL)) {
+                if (!g_file_delete(file, NULL, NULL)) {
+                        fprintf(stderr, "Unable to delete budgie db file!\n");
+                        goto bail;
+                }
+        }
+
+        db = budgie_db_new();
+
+        /* TODO: Insert tests here :P */
+        ret = EXIT_SUCCESS;
+
+bail:
+        g_free(path);
+        if (file) {
+                g_object_unref(file);
+        }
+        if (db) {
+                g_object_unref(db);
+        }
+
+        return ret;
 }
