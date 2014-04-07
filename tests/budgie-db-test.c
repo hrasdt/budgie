@@ -25,6 +25,32 @@
 #include <gio/gio.h>
 
 #include "budgie-db.h"
+#include "util.h"
+
+static gboolean load_media(void)
+{
+        GSList *tracks = NULL;
+        gint len;
+        const gchar *mimes[] = {
+                "audio",
+                "video"
+        };
+        const gchar *media_dirs[] = {
+                g_get_user_special_dir(G_USER_DIRECTORY_MUSIC),
+                g_get_user_special_dir(G_USER_DIRECTORY_VIDEOS)
+        };
+
+        for (int i = 0; i < sizeof(media_dirs)/sizeof(char*); i++) {
+                search_directory(media_dirs[i], &tracks, 2, mimes);
+        }
+
+        len = g_slist_length(tracks);
+        printf("Discovered %d media items\n", len);
+        /* TODO: Store items */
+        g_slist_free_full(tracks, free_media_info);
+
+        return TRUE;
+}
 
 int main(int argc, char **argv)
 {
@@ -58,6 +84,7 @@ int main(int argc, char **argv)
         }
 
         db = budgie_db_new();
+        load_media();
 
         /* TODO: Insert tests here :P */
         ret = EXIT_SUCCESS;
