@@ -27,10 +27,18 @@
 #include "budgie-db.h"
 #include "util.h"
 
-static gboolean load_media(void)
+#define MS 1000000
+#define NS 1000000000
+
+static gboolean load_media(BudgieDB *db)
 {
         GSList *tracks = NULL;
+        GSList *elem = NULL;
+        MediaInfo *current = NULL;
         gint len;
+        struct timespec tsi, tsf;
+        unsigned long long elapsed;
+
         const gchar *mimes[] = {
                 "audio",
                 "video"
@@ -46,7 +54,20 @@ static gboolean load_media(void)
 
         len = g_slist_length(tracks);
         printf("Discovered %d media items\n", len);
-        /* TODO: Store items */
+
+        clock_gettime(CLOCK_MONOTONIC, &tsi);
+        for (elem = tracks; elem != NULL; elem = elem->next) {
+                current = (MediaInfo*)elem->data;
+                budgie_db_store_media(db, current);
+        }
+        clock_gettime(CLOCK_MONOTONIC, &tsf);
+
+        /* Idea for this is largely credited to Buxton */
+        elapsed = (unsigned long long)((tsf.tv_nsec - tsi.tv_nsec) + ((tsf.tv_sec - tsi.tv_sec) * MS));
+        printf("Adding %d items took %0.3lfs, on average %0.4lfs\n",
+                len,
+                (double)elapsed / MS,
+                (double)(elapsed / len)/MS);
         g_slist_free_full(tracks, free_media_info);
 
         return TRUE;
@@ -84,7 +105,7 @@ int main(int argc, char **argv)
         }
 
         db = budgie_db_new();
-        load_media();
+        load_media(db);
 
         /* TODO: Insert tests here :P */
         ret = EXIT_SUCCESS;
