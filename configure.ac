@@ -25,6 +25,13 @@ AS_IF([test "x$music_player_found_id3_headers" != "xyes"],
 
 AC_CHECK_HEADERS([gdbm.h], [], [AC_MSG_ERROR([Unable to find gdbm headers])])
 
+AC_ARG_ENABLE(tests, AS_HELP_STRING([--enable-tests], [enable tests @<:@default=no@:>@]),
+	      [], [enable_tests=no])
+AS_IF([test "x$enable_tests" = "xyes"],
+	[AC_DEFINE([TESTS], [1], [Building tests])],
+	[])
+AM_CONDITIONAL([BUILD_TESTS], [test x$enable_tests = x"yes"])
+
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_FILES(Makefile src/Makefile data/Makefile)
 AC_OUTPUT
