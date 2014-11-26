@@ -27,6 +27,7 @@
 #include <gtk/gtk.h>
 
 #include "db/budgie-db.h"
+#include "budgie-track-list.h"
 
 typedef struct _BudgieMediaView BudgieMediaView;
 typedef struct _BudgieMediaViewClass   BudgieMediaViewClass;
@@ -69,12 +70,11 @@ struct _BudgieMediaView {
         GtkWidget *songs;
         GtkWidget *videos;
 
-        GtkWidget *count_label;
-        GtkWidget *current_label;
+        /* Track pages */
+        GtkWidget *album_tracks;
+        GtkWidget *song_tracks;
+        GtkWidget *video_tracks;
 
-        /* Tracks page */
-        GtkWidget *image;
-        GtkWidget *list;
         gchar *current_path;
         gint index;
 };
