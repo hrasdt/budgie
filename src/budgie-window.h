@@ -40,8 +40,15 @@
     padding: 2px 2px 0px 2px;\
 }\
 GtkIconView,\
-GtkListBox {\
+GtkTreeView {\
     background-color: transparent;\
+}\
+GtkTreeView row {\
+    color: #707070;\
+}\
+GtkTreeView row:selected {\
+    color: @selected_fg_color;\
+    background-color: @selected_bg_color;\
 }\
 .info-label {\
     color: #707070;\

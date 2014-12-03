@@ -49,6 +49,9 @@ static void budgie_track_list_init(BudgieTrackList *self)
         
         GtkWidget *list;
         GtkWidget *scroll;
+
+        GtkCellRenderer *renderer;
+        GtkTreeViewColumn *column;
         
         GtkStyleContext *style;
 
@@ -91,10 +94,46 @@ static void budgie_track_list_init(BudgieTrackList *self)
         style = gtk_widget_get_style_context(label);
         gtk_style_context_add_class(style, "info-label");
 
+        /* Construct the track list box. */
+        self->store = gtk_list_store_new(BUDGIE_TRACK_LIST_DB_NUM_FIELDS,
+                G_TYPE_STRING, /* Title */
+                G_TYPE_STRING, /* Artist/author */
+                G_TYPE_STRING, /* Album */
+                G_TYPE_STRING, /* Band */
+                G_TYPE_STRING, /* Genre */
+                G_TYPE_STRING, /* File path */
+                G_TYPE_STRING, /* MIME type */
+                G_TYPE_POINTER, /* MediaInfo */
+                G_TYPE_STRING /* Now-playing */
+                );
+
         /* Append tracks to a pretty listbox */
-        list = gtk_list_box_new();
-        //        g_signal_connect(list, "row-activated",
-        //                G_CALLBACK(list_selection_cb), self);
+        list = gtk_tree_view_new_with_model(GTK_TREE_MODEL(self->store));
+        gtk_tree_view_set_activate_on_single_click(GTK_TREE_VIEW(list), TRUE);
+        g_object_set(G_OBJECT(list), "headers-visible", FALSE, NULL);
+
+        /* Add columns for the list. */
+        renderer = gtk_cell_renderer_pixbuf_new();
+        column = gtk_tree_view_column_new_with_attributes("  ",
+                renderer,
+                "icon-name", BUDGIE_TRACK_LIST_DB_PLAYING,
+                NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(list), column);
+
+        renderer = gtk_cell_renderer_text_new();
+        column = gtk_tree_view_column_new_with_attributes("Title",
+                renderer,
+                "text", BUDGIE_TRACK_LIST_DB_TITLE,
+                NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(list), column);
+
+        renderer = gtk_cell_renderer_text_new();
+        column = gtk_tree_view_column_new_with_attributes("Artist",
+                renderer,
+                "text", BUDGIE_TRACK_LIST_DB_ARTIST,
+                NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(list), column);
+
         gtk_widget_set_halign(list, GTK_ALIGN_FILL);
         self->list = list;
 
@@ -127,3 +166,35 @@ GtkWidget* budgie_track_list_new(void)
         return GTK_WIDGET(self);
 }
 
+void budgie_track_list_update_playing(BudgieTrackList *self, MediaInfo *now_playing)
+{
+        GtkTreeModel *model;
+        GtkTreeIter iter;
+        MediaInfo *info;
+
+        model = gtk_tree_view_get_model(GTK_TREE_VIEW(self->list)); /* should be == self->store */
+
+        /* Only have the playing track play. */
+        gtk_tree_model_get_iter_first(model, &iter);
+        do {
+                gtk_tree_model_get(model,
+                        &iter,
+                        BUDGIE_TRACK_LIST_DB_INFO, &info,
+                        -1);
+                if (info == now_playing) {
+                        gtk_list_store_set(GTK_LIST_STORE(model),
+                                &iter,
+                                BUDGIE_TRACK_LIST_DB_PLAYING, "media-playback-start",
+                                -1);
+                        GtkTreePath *path = gtk_tree_model_get_path(GTK_TREE_MODEL(self->store), &iter);
+                        gtk_tree_view_set_cursor(GTK_TREE_VIEW(self->list), path, NULL, FALSE);
+
+                }
+                else {
+                        gtk_list_store_set(GTK_LIST_STORE(model),
+                                &iter,
+                                BUDGIE_TRACK_LIST_DB_PLAYING, NULL,
+                                -1);
+                }
+        } while (gtk_tree_model_iter_next(model, &iter));
+}

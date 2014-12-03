@@ -38,12 +38,14 @@ static void budgie_media_view_dispose(GObject *object);
 
 static gboolean update_db_t(gpointer userdata);
 static gpointer update_db(gpointer userdata);
-static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results);
+static void set_display(BudgieMediaView *self, GPtrArray *results);
 static void item_activated_cb(GtkWidget *widget,
                               GtkTreePath *tree_path,
                               gpointer userdata);
 static void button_clicked_cb(GtkWidget *widget, gpointer userdata);
-static void list_selection_cb(GtkListBox *list, GtkListBoxRow *row,
+static void list_selection_cb(GtkTreeView *list,
+                              GtkTreePath *row,
+                              GtkTreeViewColumn *column,
                               gpointer userdata);
 
 static GdkPixbuf *beautify(GdkPixbuf **source,
@@ -386,7 +388,6 @@ static void item_activated_cb(GtkWidget *widget,
         GValue v_album = G_VALUE_INIT;
         GValue v_path = G_VALUE_INIT;
         GdkPixbuf *pixbuf;
-        GtkListBoxRow *row = NULL;
         const char *album, *path;
         gchar *artist;
         GPtrArray *results = NULL;
@@ -438,10 +439,7 @@ static void item_activated_cb(GtkWidget *widget,
         g_free(info_string);
 
         /* Got this far */
-        row = set_display(self, results);
-        if (row)
-                gtk_list_box_select_row(GTK_LIST_BOX(track_list->list),
-                        row);
+        set_display(self, results);
 end:
         g_value_unset(&v_path);
         g_value_unset(&v_album);
@@ -452,9 +450,7 @@ static gboolean load_media_cb(gpointer userdata)
         GPtrArray *results = NULL;
         GtkWidget *widget;
         BudgieMediaView *self;
-        BudgieTrackList *track_list;
         struct LoadStruct *load;
-        GtkListBoxRow *row = NULL;
 
         load = (struct LoadStruct*)userdata;
         widget = GTK_WIDGET(load->data);
@@ -463,10 +459,8 @@ static gboolean load_media_cb(gpointer userdata)
 
         if (widget == self->albums) {
                 self->mode = MEDIA_MODE_ALBUMS;
-                track_list = BUDGIE_TRACK_LIST(self->album_tracks);
         } else if (widget == self->songs) {
                 self->mode = MEDIA_MODE_SONGS;
-                track_list = BUDGIE_TRACK_LIST(self->song_tracks);
 
                 /* Populate all songs */
                 if (!budgie_db_search_field(self->db, MEDIA_QUERY_MIME,
@@ -474,10 +468,9 @@ static gboolean load_media_cb(gpointer userdata)
                         /** Raise a warning somewhere? */
                         g_warning("No tracks found");
 
-                row = set_display(self, results);
+                set_display(self, results);
         } else if (widget == self->videos) {
                 self->mode = MEDIA_MODE_VIDEOS;
-                track_list = BUDGIE_TRACK_LIST(self->video_tracks);
 
                 /* Populate all videos */
                 if (!budgie_db_search_field(self->db, MEDIA_QUERY_MIME,
@@ -486,7 +479,7 @@ static gboolean load_media_cb(gpointer userdata)
                         g_warning("No tracks found");
                 }
 
-                row = set_display(self, results);
+                set_display(self, results);
         }
         switch (self->mode) {
                 case MEDIA_MODE_ALBUMS:
@@ -506,10 +499,6 @@ static gboolean load_media_cb(gpointer userdata)
         while (gtk_events_pending())
                 gtk_main_iteration();
 
-        if (row) {
-                gtk_list_box_select_row(GTK_LIST_BOX(track_list->list),
-                        row);
-        }
         return FALSE;
 }
 
@@ -526,22 +515,20 @@ static void button_clicked_cb(GtkWidget *widget, gpointer userdata)
         g_idle_add(load_media_cb, load);
 }
 
-static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results)
+static void set_display(BudgieMediaView *self, GPtrArray *results)
 {
         /* Media infos */
         MediaInfo *current = NULL;
-        GtkListBoxRow *row = NULL;
         int i;
-        /* Item to append to list */
-        GtkWidget *label;
         /* Info label */
         gchar *info_string = NULL;
         /* The list object which shows stuff. */
         BudgieTrackList *track_list;
+        GtkTreeIter iter;
 
         /* Do nothing when results is null */
         if (!results) {
-                return NULL;
+                return;
         }
 
         /* Clean the list view */
@@ -557,9 +544,6 @@ static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results)
                         track_list = BUDGIE_TRACK_LIST(self->album_tracks);
         }
 
-        gtk_container_foreach(GTK_CONTAINER(track_list->list),
-                (GtkCallback)gtk_widget_destroy, NULL);
-
         /* Only store one set at a time */
         if (self->results) {
                 g_ptr_array_free(self->results, TRUE);
@@ -569,42 +553,44 @@ static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results)
         g_ptr_array_sort(results, budgie_db_sort);
 
         /* Extract the fields */
+        /* This traverses the *whole* database. We really don't want to do this
+           if we've got a large number of songs in the collection. I think the
+           best way to deal with this issue is by not loading everything - we
+           can't *see* all the widgets at once, so don't try!
+           *****
+        */
+        gtk_list_store_clear(track_list->store);
+
         for (i=0; i < results->len; i++) {
                 current = (MediaInfo*)results->pdata[i];
-                label = budgie_media_label_new(current);
-                gtk_container_add(GTK_CONTAINER(track_list->list), label);
-                gtk_widget_set_halign(label, GTK_ALIGN_START);
-                /* Little bit of left padding */
-                g_object_set(label, "margin-left", 10, NULL);
-                gtk_widget_show(label);
+
+                /* Append it */
+                gtk_list_store_append(track_list->store, &iter);
+                gtk_list_store_set(track_list->store, &iter,
+                        BUDGIE_TRACK_LIST_DB_TITLE, current->title,
+                        BUDGIE_TRACK_LIST_DB_ARTIST, current->artist,
+                        BUDGIE_TRACK_LIST_DB_ALBUM, current->album,
+                        BUDGIE_TRACK_LIST_DB_BAND, current->band,
+                        BUDGIE_TRACK_LIST_DB_GENRE, current->genre,
+                        BUDGIE_TRACK_LIST_DB_PATH, current->path,
+                        BUDGIE_TRACK_LIST_DB_MIME, current->mime,
+                        BUDGIE_TRACK_LIST_DB_INFO, current, /* A reference so we can find this again. */
+                        BUDGIE_TRACK_LIST_DB_PLAYING, NULL, /* Now-playing */
+                        -1);
 
                 if (!self->current_path) {
                         continue;
                 }
                 /* If this is already playing, update the appearance */
                 if (g_str_equal(self->current_path, current->path)) {
-                        g_object_set(label, "playing", TRUE, NULL);
-                        row = gtk_list_box_get_row_at_index(
-                                GTK_LIST_BOX(track_list->list), i);
+                        gtk_list_store_set(track_list->store, &iter,
+                                 BUDGIE_TRACK_LIST_DB_PLAYING, "media-playback-start", -1);
+                        GtkTreePath *path = gtk_tree_model_get_path(GTK_TREE_MODEL(track_list->store), &iter);
+                        gtk_tree_view_set_cursor(GTK_TREE_VIEW(track_list->list), path, NULL, FALSE);
                 }
-
         }
 
-
         switch (self->mode) {
-                case MEDIA_MODE_SONGS:
-                        gtk_image_set_from_icon_name(GTK_IMAGE(track_list->image),
-                                "folder-music-symbolic", GTK_ICON_SIZE_INVALID);
-                        if (results->len == 0) {
-                                info_string = g_strdup_printf("No songs");
-                        } else if (results->len == 1) {
-                                info_string = g_strdup_printf("%d song",
-                                        results->len);
-                        } else {
-                                info_string = g_strdup_printf("%d songs",
-                                        results->len);
-                        }
-                        break;
                 case MEDIA_MODE_VIDEOS:
                         gtk_image_set_from_icon_name(GTK_IMAGE(track_list->image),
                                 "folder-videos-symbolic", GTK_ICON_SIZE_INVALID);
@@ -618,6 +604,10 @@ static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results)
                                         results->len);
                         }
                         break;
+                case MEDIA_MODE_SONGS:
+                        gtk_image_set_from_icon_name(GTK_IMAGE(track_list->image),
+                                "folder-music-symbolic", GTK_ICON_SIZE_INVALID);
+                        /* Fall through, because the terminology ("songs") is the same. */
                 default:
                         if (results->len == 0) {
                                 info_string = g_strdup_printf("No songs");
@@ -641,29 +631,51 @@ static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results)
         while (gtk_events_pending()) {
                 gtk_main_iteration();
         }
-        return row;
 }
 
-static void list_selection_cb(GtkListBox *list, GtkListBoxRow *row,
+static void list_selection_cb(GtkTreeView *list,
+                              GtkTreePath *row,
+                              GtkTreeViewColumn *column,
                               gpointer userdata)
 {
         BudgieMediaView *self;
-        BudgieMediaLabel *label;
-        MediaInfo *info;
-        GList *children;
+        MediaInfo *info = NULL;
+        GtkTreeIter iter;
+        GtkTreeModel *store;
+        guint i;
 
         self = BUDGIE_MEDIA_VIEW(userdata);
         if (!row) {
                 return;
         }
 
-        children = gtk_container_get_children(GTK_CONTAINER(row));
-        label = (BudgieMediaLabel*)g_list_nth_data(children, 0);
-        info = label->info;
+        /* Pull the MediaInfo out of the model. */
+        store = gtk_tree_view_get_model(list);
+        if (!store) {
+                return;
+        }
 
-        g_signal_emit_by_name(self, "media-selected", info);
-        g_list_free(children);
+        gtk_tree_model_get_iter(store, &iter, row);
+        gtk_tree_model_get(store, &iter,
+                           BUDGIE_TRACK_LIST_DB_INFO, &info,
+                           -1);
 
+        if (!info) {
+                return;
+        }
+        else {
+                g_signal_emit_by_name(self, "media-selected", info);
+                /* Index */
+                if (self->results) {
+                        for (i = 0; i < self->results->len; i++) {
+                                if (self->results->pdata[i] == info) {
+                                        self->index = i;
+                                        break;
+                                }
+                        }
+                }
+
+        }
 }
 
 /**
@@ -757,16 +769,19 @@ MediaInfo* budgie_media_view_get_info(BudgieMediaView *self,
         }
 
         ret = self->results->pdata[index];
+        /* Update the index.
+           This may have unforseen consequences, but I think the lack of any update to the index should be considered a bug
+           Without doing this, we'd always skip "forwards" to track number 2. Not really what we want...
+        */
+        self->index = index;
         return ret;
 }
 
 void budgie_media_view_set_active(BudgieMediaView *self,
                                   MediaInfo *active)
 {
-        BudgieMediaLabel *label;
         BudgieTrackList *track_list;
-        GList *children, *child;
-        GtkListBoxRow *row;
+        guint i;
 
         switch (self->mode){
                 case MEDIA_MODE_SONGS:
@@ -781,20 +796,8 @@ void budgie_media_view_set_active(BudgieMediaView *self,
                         track_list = BUDGIE_TRACK_LIST(self->album_tracks);
         }
 
-        /* Visit all children in our list box */
-        children = gtk_container_get_children(GTK_CONTAINER(track_list->list));
-        for (child = g_list_first(children); child; child = child->next) {
-                row = GTK_LIST_BOX_ROW(child->data);
-                label = (BudgieMediaLabel*)gtk_bin_get_child(GTK_BIN(row));
-                if (label->info != active) {
-                        g_object_set(label, "playing", FALSE, NULL);
-                } else {
-                        self->index = gtk_list_box_row_get_index(row);
-                        g_object_set(label, "playing", TRUE, NULL);
-                        gtk_list_box_select_row(GTK_LIST_BOX(track_list->list),
-                                row);
-                }
-        }
+        /* Update the track listing. */
+        budgie_track_list_update_playing(track_list, active);
 
         /* So we can track current item */
         if (self->current_path) {
@@ -802,5 +805,16 @@ void budgie_media_view_set_active(BudgieMediaView *self,
         }
         self->current_path = g_strdup(active->path);
 
-        g_list_free(children);
+        /* Update the index into results too. */
+        if (!self->results) {
+                self->index = -1;
+        }
+        else {
+                for (i = 0; i < self->results->len; i++) {
+                        if (self->results->pdata[i] == active) {
+                                self->index = i;
+                                break; /* Leave. */
+                        }
+                }
+        }
 }

@@ -410,6 +410,7 @@ static void play_cb(GtkWidget *widget, gpointer userdata)
         gchar *uri;
         const gchar *next_child;
         MediaInfo *media;
+        GstState state;
 
         self = BUDGIE_WINDOW(userdata);
         media = self->priv->media;
@@ -419,40 +420,53 @@ static void play_cb(GtkWidget *widget, gpointer userdata)
                 return;
         }
 
-        /* Dismiss existing errors */
-        error_dismiss_cb(NULL, userdata);
+        /* If we're already playing, do nothing. If we've got something paused, resume it.
+           If we're playing nothing, and aren't paused, we might need to set stuff up. */
+        gst_element_get_state(self->gst_player, &state, NULL, GST_CLOCK_TIME_NONE);
+        if (state == GST_STATE_PLAYING) {
+                return;
+        }
+        else if (state == GST_STATE_PAUSED) {
+                /* Resume */
+                gst_element_set_state(self->gst_player, GST_STATE_PLAYING);
+        }
+        else {
+                /* Dismiss existing errors */
+                error_dismiss_cb(NULL, userdata);
 
-        self->priv->current_page = gtk_stack_get_visible_child_name(GTK_STACK(self->stack));
+                self->priv->current_page = gtk_stack_get_visible_child_name(GTK_STACK(self->stack));
 
-        /* Switch to video view for video content */
-        if (g_str_has_prefix(media->mime, "video/")) {
-                next_child = "video";
-                if (!self->video_realized) {
-                        gtk_widget_realize(self->video);
+                /* Switch to video view for video content */
+                if (g_str_has_prefix(media->mime, "video/")) {
+                        next_child = "video";
+                        if (!self->video_realized) {
+                                gtk_widget_realize(self->video);
+                        }
+                        budgie_control_bar_set_show_video(BUDGIE_CONTROL_BAR(self->toolbar), TRUE);
+                } else {
+                        next_child = "view";
+                        budgie_control_bar_set_show_video(BUDGIE_CONTROL_BAR(self->toolbar), FALSE);
+                        self->priv->full_screen = FALSE;
+                        full_screen_cb(widget, userdata);
                 }
-                budgie_control_bar_set_show_video(BUDGIE_CONTROL_BAR(self->toolbar), TRUE);
-        } else {
-                next_child = "view";
-                budgie_control_bar_set_show_video(BUDGIE_CONTROL_BAR(self->toolbar), FALSE);
-                self->priv->full_screen = FALSE;
-                full_screen_cb(widget, userdata);
-        }
-        if (!g_str_equal(self->priv->current_page, "settings")) {
-                gtk_stack_set_visible_child_name(GTK_STACK(self->stack), next_child);
-        }
-        self->priv->current_page = next_child;
+                if (!g_str_equal(self->priv->current_page, "settings")) {
+                        gtk_stack_set_visible_child_name(GTK_STACK(self->stack), next_child);
+                }
+                self->priv->current_page = next_child;
 
-        uri = g_filename_to_uri(media->path, NULL, NULL);
-        if (g_strcmp0(uri, self->priv->uri) != 0) {
-                /* Media change between pausing */
-                gst_element_set_state(self->gst_player, GST_STATE_NULL);
+                uri = g_filename_to_uri(media->path, NULL, NULL);
+                if (g_strcmp0(uri, self->priv->uri) != 0) {
+                        /* Media change between pausing */
+                        gst_element_set_state(self->gst_player, GST_STATE_NULL);
+                }
+                if (self->priv->uri) {
+                        g_free(self->priv->uri);
+                }
+                self->priv->uri = uri;
+                g_object_set(self->gst_player, "uri", self->priv->uri, NULL);
+
+                gst_element_set_state(self->gst_player, GST_STATE_PLAYING);
         }
-        if (self->priv->uri) {
-                g_free(self->priv->uri);
-        }
-        self->priv->uri = uri;
-        g_object_set(self->gst_player, "uri", self->priv->uri, NULL);
-        gst_element_set_state(self->gst_player, GST_STATE_PLAYING);
 
         /* Update media controls */
         gtk_widget_hide(self->play);
@@ -762,6 +776,7 @@ static gboolean key_cb(GtkWidget *widget, GdkEventKey *event, gpointer userdata)
         if (!self->priv->full_screen) {
                 return FALSE;
         }
+
         gtk_window_unfullscreen(GTK_WINDOW(self->window));
         gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), TRUE);
         self->priv->full_screen = FALSE;
@@ -862,6 +877,7 @@ static void media_selected_cb(BudgieMediaView *view, gpointer info, gpointer use
         self = BUDGIE_WINDOW(userdata);
         media = (MediaInfo*)info;
         self->priv->media = media;
+        gst_element_set_state(self->gst_player, GST_STATE_NULL);
         play_cb(NULL, userdata);
 }
 

@@ -26,6 +26,8 @@
 #include <glib-object.h>
 #include <gtk/gtk.h>
 
+#include "db/budgie-db.h"
+
 typedef struct _BudgieTrackList BudgieTrackList;
 typedef struct _BudgieTrackListClass   BudgieTrackListClass;
 
@@ -37,7 +39,7 @@ typedef struct _BudgieTrackListClass   BudgieTrackListClass;
 #define BUDGIE_TRACK_LIST_GET_CLASS(obj)         (G_TYPE_INSTANCE_GET_CLASS ((obj), BUDGIE_TRACK_LIST_TYPE, BudgieTrackListClass))
 
 
-/* BudgieControlBar object */
+/* BudgieTrackList object */
 struct _BudgieTrackList {
         GtkBin parent;
 
@@ -45,9 +47,33 @@ struct _BudgieTrackList {
         GtkWidget *current_label;
         GtkWidget *count_label;
         GtkWidget *list;
+
+        /* We'll copy stuff from the BudgieDB into this. Ultimately, BudgieDB should probably subclass GtkTreeModel */
+        GtkListStore *store;
 };
 
-/* BudgieControlBar class definition */
+/* We want to be able to update the currently-playing track. */
+enum {
+        BUDGIE_NOT_PLAYING=0,
+        BUDGIE_PLAYING=1,
+        BUDGIE_PAUSED,
+};
+
+enum {
+        BUDGIE_TRACK_LIST_DB_TITLE = 0,
+        BUDGIE_TRACK_LIST_DB_ARTIST,
+        BUDGIE_TRACK_LIST_DB_ALBUM,
+        BUDGIE_TRACK_LIST_DB_BAND,
+        BUDGIE_TRACK_LIST_DB_GENRE,
+        BUDGIE_TRACK_LIST_DB_PATH,
+        BUDGIE_TRACK_LIST_DB_MIME,
+        BUDGIE_TRACK_LIST_DB_INFO,
+        BUDGIE_TRACK_LIST_DB_PLAYING,
+
+        BUDGIE_TRACK_LIST_DB_NUM_FIELDS
+};
+
+/* BudgieTrackList class definition */
 struct _BudgieTrackListClass {
         GtkBinClass parent_class;
 };
@@ -56,5 +82,7 @@ GType budgie_track_list_get_type(void);
 
 /* BudgieControlBar methods */
 GtkWidget* budgie_track_list_new(void);
+
+void budgie_track_list_update_playing(BudgieTrackList *list, MediaInfo *now_playing);
 
 #endif /* budgie_track_list_h */
