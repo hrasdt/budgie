@@ -769,20 +769,41 @@ static gboolean key_cb(GtkWidget *widget, GdkEventKey *event, gpointer userdata)
         BudgieWindow *self;
 
         self = BUDGIE_WINDOW(userdata);
-        if (event->keyval != GDK_KEY_Escape) {
-                return FALSE;
-        }
 
-        if (!self->priv->full_screen) {
-                return FALSE;
+        if (event->keyval == GDK_KEY_Escape) {
+                /* Unmaximise */
+                if (!self->priv->full_screen) {
+                        return FALSE;
+                }
+                gtk_window_unfullscreen(GTK_WINDOW(self->window));
+                gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), TRUE);
+                self->priv->full_screen = FALSE;
+                budgie_control_bar_set_action_state(BUDGIE_CONTROL_BAR(self->toolbar),
+                        BUDGIE_ACTION_FULL_SCREEN, FALSE);
+                return TRUE;
         }
+        else {
+                /* Handle the special XF86 media keys. */
+                switch (event->keyval) {
+                        case GDK_KEY_AudioPlay:
+                                play_cb(NULL, userdata);
+                                break;
+                        case GDK_KEY_AudioStop:
+                                pause_cb(NULL, userdata);
+                                break;
+                        case GDK_KEY_AudioPrev:
+                                prev_cb(NULL, userdata);
+                                break;
+                        case GDK_KEY_AudioNext:
+                                next_cb(NULL, userdata);
+                                break;
 
-        gtk_window_unfullscreen(GTK_WINDOW(self->window));
-        gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), TRUE);
-        self->priv->full_screen = FALSE;
-        budgie_control_bar_set_action_state(BUDGIE_CONTROL_BAR(self->toolbar),
-                BUDGIE_ACTION_FULL_SCREEN, FALSE);
-        return TRUE;
+                        default:
+                                /* We didn't handle this key. */
+                                return FALSE;
+                }
+                return TRUE;
+        }
 }
 
 static void settings_changed(GSettings *settings, gchar *key, gpointer userdata)
