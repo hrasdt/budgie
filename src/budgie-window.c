@@ -429,6 +429,11 @@ static void play_cb(GtkWidget *widget, gpointer userdata)
         else if (state == GST_STATE_PAUSED) {
                 /* Resume */
                 gst_element_set_state(self->gst_player, GST_STATE_PLAYING);
+                /* If we're playing a video, we'll need to show it. */
+                if (BUDGIE_MEDIA_VIEW(self->view)->mode == MEDIA_MODE_VIDEOS) {
+                        gtk_stack_set_visible_child_name(GTK_STACK(self->stack),
+                                "video");
+                }
         }
         else {
                 /* Dismiss existing errors */
@@ -439,6 +444,7 @@ static void play_cb(GtkWidget *widget, gpointer userdata)
                 /* Switch to video view for video content */
                 if (g_str_has_prefix(media->mime, "video/")) {
                         next_child = "video";
+                        BUDGIE_MEDIA_VIEW(self->view)->mode = MEDIA_MODE_VIDEOS;
                         if (!self->video_realized) {
                                 gtk_widget_realize(self->video);
                         }
@@ -770,17 +776,24 @@ static gboolean key_cb(GtkWidget *widget, GdkEventKey *event, gpointer userdata)
 
         self = BUDGIE_WINDOW(userdata);
 
-        if (event->keyval == GDK_KEY_Escape) {
-                /* Unmaximise */
+        if (event->keyval == GDK_KEY_Escape && BUDGIE_MEDIA_VIEW(self->view)->mode == MEDIA_MODE_VIDEOS) {
                 if (!self->priv->full_screen) {
-                        return FALSE;
+                        /* If we're not maximised, stop playing, and return to the list. */
+                        pause_cb(NULL, userdata);
+                        gtk_stack_set_visible_child_name(GTK_STACK(self->stack),
+                                "view");
+
+                        return TRUE;
                 }
-                gtk_window_unfullscreen(GTK_WINDOW(self->window));
-                gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), TRUE);
-                self->priv->full_screen = FALSE;
-                budgie_control_bar_set_action_state(BUDGIE_CONTROL_BAR(self->toolbar),
-                        BUDGIE_ACTION_FULL_SCREEN, FALSE);
-                return TRUE;
+                else {
+                        /* Unmaximise */
+                        gtk_window_unfullscreen(GTK_WINDOW(self->window));
+                        gtk_revealer_set_reveal_child(GTK_REVEALER(self->south_reveal), TRUE);
+                        self->priv->full_screen = FALSE;
+                        budgie_control_bar_set_action_state(BUDGIE_CONTROL_BAR(self->toolbar),
+                                BUDGIE_ACTION_FULL_SCREEN, FALSE);
+                        return TRUE;
+                }
         }
         else {
                 /* Handle the special XF86 media keys. */
