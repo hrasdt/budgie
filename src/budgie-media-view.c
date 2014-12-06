@@ -345,10 +345,9 @@ static gpointer update_db(gpointer userdata)
                 else
                         markup = g_markup_printf_escaped("<big>%s\n<span color='#707070'>%s</span></big>",
                                 current->album, current->artist);
-                gtk_list_store_append(model, &iter);
 
-                /* Set it in the list store */
-                gtk_list_store_set(model, &iter,
+                /* Add this to the list store. */
+                gtk_list_store_insert_with_values(model, &iter, -1,
                         ALBUM_TITLE, markup,
                         ALBUM_PIXBUF, pixbuf,
                         ALBUM_ALBUM, current->album,
@@ -565,8 +564,7 @@ static void set_display(BudgieMediaView *self, GPtrArray *results)
                 current = (MediaInfo*)results->pdata[i];
 
                 /* Append it */
-                gtk_list_store_append(track_list->store, &iter);
-                gtk_list_store_set(track_list->store, &iter,
+                gtk_list_store_insert_with_values(track_list->store, &iter, -1,
                         BUDGIE_TRACK_LIST_DB_TITLE, current->title,
                         BUDGIE_TRACK_LIST_DB_ARTIST, current->artist,
                         BUDGIE_TRACK_LIST_DB_ALBUM, current->album,
