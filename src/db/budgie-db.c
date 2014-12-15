@@ -30,14 +30,11 @@
 /* Private storage */
 struct _BudgieDBPrivate {
         gchar *storage_path;
-        GDBM_FILE db;
+        sqlite3 *db;
+        char *zErrMesg;
 };
 
 G_DEFINE_TYPE_WITH_PRIVATE(BudgieDB, budgie_db, G_TYPE_OBJECT)
-
-/* Private utilities */
-static gboolean budgie_db_serialize(MediaInfo *info, uint8_t **target);
-static gboolean budgie_db_deserialize(uint8_t* source, MediaInfo **target);
 
 /* Boilerplate GObject code */
 static void budgie_db_class_init(BudgieDBClass *klass);
@@ -47,7 +44,56 @@ static void budgie_db_dispose(GObject *object);
 /* Used to keep the database thread safe */
 static GMutex _lock;
 
+/* Utility functions */
+static gboolean _db_create(BudgieDB *self);
+static gchar* _sanitize_value(gchar *val);
+
 /* MediaInfo API */
+MediaInfo* new_media_info(sqlite3_stmt *stmt)
+{
+        MediaInfo *ret;
+
+        ret = malloc(sizeof(MediaInfo));
+        if (!ret){
+                g_error("Couldn't allocate memory for a new record!");
+                return NULL;
+        }
+
+        ret->id = sqlite3_column_int(stmt, BUDGIE_DB_COLUMN_ID);
+
+        ret->title = g_strdup((gchar*)
+                              sqlite3_column_text(stmt,
+                                                  BUDGIE_DB_COLUMN_TITLE));
+
+        ret->track_no = sqlite3_column_int(stmt, BUDGIE_DB_COLUMN_TRACK);
+
+        ret->artist = g_strdup((gchar *)
+                               sqlite3_column_text(stmt,
+                                                   BUDGIE_DB_COLUMN_ARTIST));
+
+        ret->album = g_strdup((gchar *)
+                              sqlite3_column_text(stmt,
+                                                  BUDGIE_DB_COLUMN_ALBUM));
+
+        ret->band = g_strdup((gchar *)
+                             sqlite3_column_text(stmt,
+                                                 BUDGIE_DB_COLUMN_BAND));
+
+        ret->genre = g_strdup((gchar *)
+                              sqlite3_column_text(stmt,
+                                                  BUDGIE_DB_COLUMN_GENRE));
+
+        ret->path = g_strdup((gchar *)
+                             sqlite3_column_text(stmt,
+                                                 BUDGIE_DB_COLUMN_PATH));
+
+        ret->mime = g_strdup((gchar *)
+                             sqlite3_column_text(stmt,
+                                                 BUDGIE_DB_COLUMN_MIME));
+
+        return ret;
+}
+
 void free_media_info(gpointer p_info)
 {
         MediaInfo *info;
@@ -88,6 +134,7 @@ static void budgie_db_class_init(BudgieDBClass *klass)
 static void budgie_db_init(BudgieDB *self)
 {
         const gchar *config;
+        gint stat;
         self->priv = budgie_db_get_instance_private(self);
 
         /* Our storage location */
@@ -96,11 +143,67 @@ static void budgie_db_init(BudgieDB *self)
                 CONFIG_NAME);
 
         /* Open the database */
-        self->priv->db = gdbm_open(self->priv->storage_path, 0,
-                GDBM_WRCREAT, 0600, NULL);
-        if (!self->priv->db) {
-                g_error("Failed to initialise database!");
+        stat = sqlite3_open(self->priv->storage_path, &self->priv->db);
+
+        if (stat != SQLITE_OK) {
+                g_error("Failed to open the database! %s", sqlite3_errmsg(self->priv->db));
+                sqlite3_close(self->priv->db);
         }
+
+        /* Create a database if necessary */
+        if (!_db_create(self)){
+          g_error("Failed to initialise the database!");
+          sqlite3_close(self->priv->db);
+        }
+}
+
+static gchar* _sanitize_value(gchar *val){
+        gint i;
+        gchar *res, *c;
+
+        if (val == NULL){
+                res = g_strdup("");
+                return res;
+        }
+
+        /* Lazy implementation. */
+        res = g_strnfill(strlen(val) * 2, '\0');
+        i = 0;
+        for (c = val; *c != '\0'; c++){
+                if (*c == '\''){
+                        res[i++] = '\'';
+                }
+                res[i++] = *c;
+        }
+
+        return res;
+}
+
+static gboolean _db_create(BudgieDB *self){
+        int stat;
+        gchar *sql = g_strdup(""
+                "CREATE TABLE IF NOT EXISTS items("
+                "ID INTEGER PRIMARY KEY NOT NULL,"
+                "title TEXT NOT NULL,"
+                "track INTEGER NOT NULL,"
+                "artist TEXT,"
+                "album TEXT,"
+                "band TEXT,"
+                "genre TEXT,"
+                "path TEXT NOT NULL UNIQUE,"
+                "mimetype TEXT NOT NULL"
+                ");");
+
+        stat = sqlite3_exec(self->priv->db, sql,
+                            NULL, NULL, &self->priv->zErrMesg);
+        g_free(sql);
+        if (stat != SQLITE_OK && stat != SQLITE_DONE){
+                g_error("An SQL error occured while creating the table: %s",
+                        self->priv->zErrMesg);
+                return FALSE;
+        }
+
+        return TRUE;
 }
 
 static void budgie_db_dispose(GObject *object)
@@ -113,7 +216,8 @@ static void budgie_db_dispose(GObject *object)
                 self->priv->storage_path = NULL;
         }
 
-        gdbm_close(self->priv->db);
+        sqlite3_close(self->priv->db);
+
         /* Destruct */
         G_OBJECT_CLASS(budgie_db_parent_class)->dispose(object);
 }
@@ -127,77 +231,173 @@ BudgieDB* budgie_db_new(void)
         return BUDGIE_DB(self);
 }
 
-void budgie_db_store_media(BudgieDB *self, MediaInfo *info)
+gboolean budgie_db_update(BudgieDB *self, GSList *tracks)
 {
-        datum value;
-        uint8_t *store = NULL;
+        GSList *ref;
+        MediaInfo *info;
+        sqlite3_stmt *stmt;
+        gint stat;
+        gint c;
+
+        g_return_val_if_fail(self != NULL, FALSE);
+
+        gchar *sql = g_strdup(""
+                "insert or replace "
+                "into items(ID, title, track, artist, album, "
+                "           band, genre, path, mimetype) "
+                "values ( (select id from items where path == ?), "
+                              "         ?, ?, ?, ?, ?, ?, ?, ?);");
 
         g_mutex_lock(&_lock);
-        /* Path is the unique key */
-        datum key = { (char*)info->path, ((int)strlen(info->path))+1 };
 
-        if (!budgie_db_serialize(info, &store)) {
-                g_warning("Unable to serialize data!");
-                goto end;
-        }
-        value.dptr = (char*)store;
-        value.dsize = (int)malloc_usable_size(store);;
+        /* BEGIN */
+        stat = sqlite3_exec(self->priv->db, "BEGIN",
+                NULL, NULL, &self->priv->zErrMesg);
+        if (stat != SQLITE_OK) {
+                g_error("SQL error: %d", stat);
+                g_error("Further info: %s", self->priv->zErrMesg);
 
-        gdbm_store(self->priv->db, key, value, GDBM_REPLACE);
-end:
-        if (store) {
-                free(store);
+                g_free(sql);
+                g_mutex_unlock(&_lock);
+                return FALSE;
         }
 
+        stat = sqlite3_prepare_v2(self->priv->db, (const char *) sql, -1,
+                &stmt, NULL);
+        if (stat != SQLITE_OK){
+                g_error("SQL error: %d", stat);
+                g_error("Failed to update the database!");
+
+                sqlite3_finalize(stmt);
+                g_free(sql);
+                g_mutex_unlock(&_lock);
+                return FALSE;
+        }
+
+        /* Now, go through the list and add all these new things. */
+        c = 0;
+        for (ref = tracks; ref != NULL; ref = g_slist_next(ref)) {
+                c++;
+                info = (MediaInfo*) ref->data;
+                sqlite3_reset(stmt);
+
+                /* Bind the values. */
+                stat = sqlite3_bind_text(stmt, 1, info->path, -1, NULL);
+                stat = sqlite3_bind_text(stmt, 2, info->title, -1, NULL);
+                stat = sqlite3_bind_int(stmt, 3, info->track_no);
+                stat = sqlite3_bind_text(stmt, 4, info->artist, -1, NULL);
+                stat = sqlite3_bind_text(stmt, 5, info->album, -1, NULL);
+                stat = sqlite3_bind_text(stmt, 6, info->band, -1, NULL);
+                stat = sqlite3_bind_text(stmt, 7, info->genre, -1, NULL);
+                stat = sqlite3_bind_text(stmt, 8, info->path, -1, NULL);
+                stat = sqlite3_bind_text(stmt, 9, info->mime, -1, NULL);
+
+                do {
+                        stat = sqlite3_step(stmt);
+                } while (stat == SQLITE_ROW);
+
+                if (stat != SQLITE_DONE){
+                        g_warning("SQL failed to add an item: %d", stat);
+                }
+        }
+
+        /* END */
+        stat = sqlite3_exec(self->priv->db, "COMMIT",
+                NULL, NULL, &self->priv->zErrMesg);
+
+        g_message("Added %d tracks\n", c);
+
+        /* Wrap up */
+        g_free(sql);
+        sqlite3_finalize(stmt);
         g_mutex_unlock(&_lock);
+
+        return TRUE;
 }
 
 MediaInfo* budgie_db_get_media(BudgieDB *self, gchar *path)
 {
-        datum value;
-        MediaInfo *ret = NULL;
-        uint8_t* store = NULL;
-        datum key = { (char*)path, (int)strlen(path)+1 };
+        MediaInfo *ret;
+        gchar *s_path;
+        gchar *sql;
+        sqlite3_stmt *stmt = NULL;
+        int stat;
 
-        memset(&value, 0, sizeof(datum));
-        value = gdbm_fetch(self->priv->db, key);
-        if (value.dsize < 0 || value.dptr == NULL) {
+        s_path = _sanitize_value(path);
+        ret = malloc(sizeof(MediaInfo));
+        if (!ret) {
                 goto end;
         }
-        store = (uint8_t*)value.dptr;
 
-        if (!budgie_db_deserialize(store, &ret)) {
-                g_message("Unable to deserialize");
+        sql = g_strdup_printf("SELECT * FROM items WHERE path == '%s'",
+                       s_path);
+
+        g_mutex_lock(&_lock);
+
+        stat = sqlite3_prepare_v2(self->priv->db, (const char *)sql,
+                -1, &stmt, NULL);
+        stat = sqlite3_step(stmt);
+        if (stat == SQLITE_DONE){
+                /* Ran out of things :( */
                 goto end;
         }
-        ret->path = g_strdup(path);
+        else if (stat == SQLITE_ERROR){
+                g_error("SQL error: %s", sqlite3_errmsg(self->priv->db));
+                goto end;
+        }
+        else if (stat == SQLITE_ROW){
+                /* We have data to process */
+                ret = new_media_info(stmt);
+        }
+
 end:
-        if (store) {
-                free(store);
+        if (stmt){
+                sqlite3_finalize(stmt);
         }
+
+        g_mutex_unlock(&_lock);
+        g_free(s_path);
 
         return ret;
 }
 
 GSList* budgie_db_get_all_media(BudgieDB* self)
 {
-        datum key, nextkey;
-        GSList* ret = NULL;
-        char *path;
-        MediaInfo *cur = NULL;
+        GSList *ret = NULL;
+        MediaInfo *info;
+        gchar *sql;
+        sqlite3_stmt *stmt = NULL;
+        int stat;
 
         g_mutex_lock(&_lock);
 
-        key = gdbm_firstkey(self->priv->db);
-        while (key.dptr) {
-                path = (char*)key.dptr;
-                cur = budgie_db_get_media(self, path);
-                ret = g_slist_append(ret, cur);
-                nextkey = gdbm_nextkey(self->priv->db, key);
-                free(key.dptr);
-                key = nextkey;
+        sql = g_strdup("SELECT * FROM items ORDER BY track ASC, id ASC");
+
+        /* Iterate until we run out of things */
+        stat = sqlite3_prepare_v2(self->priv->db, (const char *)sql,
+                -1, &stmt, NULL);
+        stat = sqlite3_step(stmt);
+        while (stat == SQLITE_ROW){
+                /* We have data to process */
+                info = new_media_info(stmt);
+
+                ret = g_slist_append(ret, info);
+
+                /* Continue. */
+                stat = sqlite3_step(stmt);
         }
+
+        if (stat == SQLITE_ERROR){
+                g_error("SQL error: %s", sqlite3_errmsg(self->priv->db));
+        }
+
+        /* Wrap up */
+        if (stmt){
+                sqlite3_finalize(stmt);
+        }
+
         g_mutex_unlock(&_lock);
+        g_free(sql);
 
         return ret;
 }
@@ -208,75 +408,77 @@ gboolean budgie_db_get_all_by_field(BudgieDB *self,
 {
         g_assert(query >= 0 && query < MEDIA_QUERY_MAX);
 
-        datum key, nextkey;
         GPtrArray *_results = NULL;
-        char *path;
-        gboolean ret = FALSE;
-        MediaInfo *media = NULL;
-        char *append = NULL;
-        gboolean should_append = TRUE;
-        int i;
+
+        sqlite3_stmt *stmt;
+        gchar *sql;
+        gint stat;
+
+        gchar *append;
 
         g_mutex_lock(&_lock);
-
         _results = g_ptr_array_new();
 
-        /* Iterate through every key in the database */
-        key = gdbm_firstkey(self->priv->db);
-        while (key.dptr) {
-                path = (char*)key.dptr;
+        switch (query) {
+                case MEDIA_QUERY_TITLE:
+                        sql = g_strdup("SELECT DISTINCT title FROM items ORDER BY track ASC, id ASC;");
+                        break;
+                case MEDIA_QUERY_ALBUM:
+                        sql = g_strdup("SELECT DISTINCT album FROM items ORDER BY track ASC, id ASC;");
+                        break;
+                case MEDIA_QUERY_ARTIST:
+                        sql = g_strdup("SELECT DISTINCT artist FROM items ORDER BY track ASC, id ASC;");
+                        break;
+                case MEDIA_QUERY_GENRE:
+                        sql = g_strdup("SELECT DISTINCT genre FROM items ORDER BY track ASC, id ASC;");
+                        break;
+                case MEDIA_QUERY_MIME:
+                        sql = g_strdup("SELECT DISTINCT mime FROM items ORDER BY track ASC, id ASC;");
+                        break;
+                default:
+                        sql = g_strdup("SELECT DISTINCT path FROM items ORDER BY track ASC, id ASC;");
+        }
 
-                media = budgie_db_get_media(self, path);
-                /* Only interested in one field really */
-                switch (query) {
-                        case MEDIA_QUERY_TITLE:
-                                append = media->title;
-                                break;
-                        case MEDIA_QUERY_ALBUM:
-                                append = media->album;
-                                break;
-                        case MEDIA_QUERY_ARTIST:
-                                append = media->artist;
-                                break;
-                        case MEDIA_QUERY_GENRE:
-                                append = media->genre;
-                                break;
-                        case MEDIA_QUERY_MIME:
-                                append = media->mime;
-                                break;
-                        default:
-                                break;
+        stat = sqlite3_prepare_v2(self->priv->db, (const char *)sql,
+                -1, &stmt, NULL);
+
+        if (stat != SQLITE_OK) {
+                g_warning("SQL error: %d", stat);
+        }
+        stat = sqlite3_step(stmt);
+        while (stat == SQLITE_ROW) {
+                /* We have data to process */
+                append = g_strdup( (const gchar*) sqlite3_column_text(stmt, 0));
+                if (append == NULL || append[0] == '\0'){
+                        /* Don't append it */
+                        g_free(append);
                 }
-                if (append != NULL) {
-                        for (i=0; i < _results->len; i++) {
-                                if (g_str_equal(_results->pdata[i], append)) {
-                                        should_append = FALSE;
-                                        break;
-                                }
-                        }
+                else {
+                        g_ptr_array_add(_results, append);
                 }
-                if (should_append && append != NULL) {
-                        g_ptr_array_add(_results, g_strdup(append));
-                }
-                should_append = TRUE;
-                free_media_info(media);
-                /* Visit the next key */
-                nextkey = gdbm_nextkey(self->priv->db, key);
-                free(key.dptr);
-                key = nextkey;
-                append = NULL;
+
+                /* Continue. */
+                stat = sqlite3_step(stmt);
+        }
+        if (stat == SQLITE_ERROR) {
+                g_error("SQL error: %s", sqlite3_errmsg(self->priv->db));
+        }
+
+        /* Wrap up */
+        if (stmt){
+                sqlite3_finalize(stmt);
         }
         g_mutex_unlock(&_lock);
+        g_free(sql);
 
         /* No results */
         if (_results->len < 1) {
                 g_ptr_array_free(_results, TRUE);
-                return ret;
+                return FALSE;
         }
-        ret = TRUE;
-        *results = _results;
 
-        return ret;
+        *results = _results;
+        return TRUE;
 }
 
 gboolean budgie_db_search_field(BudgieDB *self,
@@ -290,325 +492,135 @@ gboolean budgie_db_search_field(BudgieDB *self,
         g_assert(match >= 0 && match < MATCH_QUERY_MAX);
         g_assert(term != NULL);
 
-        datum key, nextkey;
         GPtrArray *_results = NULL;
-        char *path;
-        gboolean ret = FALSE;
-        MediaInfo *media = NULL;
-        char *test = NULL;
-        int count = 0;
-        gboolean succ = FALSE;
+        MediaInfo *info, *cmp;
 
-        g_mutex_lock(&_lock);
+        sqlite3_stmt *stmt;
+        gchar *sql, *like_match, *s_term, *test, *limit;
+        gint stat;
+
+        gint i;
+        gboolean should_append;
+
+        /* Ensure we're not null */
+        g_return_val_if_fail(self != NULL, FALSE);
 
         _results = g_ptr_array_new();
 
-        /* Iterate through every key in the database */
-        key = gdbm_firstkey(self->priv->db);
-        while (key.dptr) {
-                /* Only return a limited set of results */
-                if (count >= max && max != -1) {
-                        free(key.dptr);
-                        break;
-                }
-                path = (char*)key.dptr;
+        s_term = _sanitize_value(term);
 
-                media = budgie_db_get_media(self, path);
-                /* Only interested in one field really */
-                switch (query) {
-                        case MEDIA_QUERY_TITLE:
-                                test = media->title;
-                                break;
-                        case MEDIA_QUERY_ALBUM:
-                                test = media->album;
-                                break;
-                        case MEDIA_QUERY_ARTIST:
-                                test = media->artist;
-                                break;
-                        case MEDIA_QUERY_GENRE:
-                                test = media->genre;
-                                break;
-                        case MEDIA_QUERY_MIME:
-                                test = media->mime;
-                                break;
-                        default:
-                                break;
-                }
-                if (!test) {
-                        goto clear;
-                }
-                /* Test the search term */
-                switch (match) {
-                        case MATCH_QUERY_END:
-                                succ = g_str_has_suffix(test, term);
-                                break;
-                        case MATCH_QUERY_START:
-                                succ = g_str_has_prefix(test, term);
-                                break;
-                        case MATCH_QUERY_EXACT:
-                                succ = g_str_equal(test, term);
-                                break;
-                        default:
-                                break;
-                }
-                if (succ) {
-                        g_ptr_array_add(_results, media);
-                        count += 1;
-                        goto next;
-                }
-clear:
-                free_media_info(media);
-                /* Visit the next key */
-next:
-                nextkey = gdbm_nextkey(self->priv->db, key);
-                free(key.dptr);
-                key = nextkey;
-                test = NULL;
-                succ = FALSE;
+        if (max == -1){
+                limit = g_strdup("");
         }
+        else {
+                limit = g_strdup_printf(" LIMIT %d", max);
+        }
+
+        switch (match) {
+                case MATCH_QUERY_START:
+                        like_match = g_strdup_printf("LIKE '%s%%'", s_term);
+                        break;
+                case MATCH_QUERY_END:
+                        like_match = g_strdup_printf("LIKE '%%%s'", s_term);
+                        break;
+                case MATCH_QUERY_EXACT:
+                        like_match = g_strdup_printf("== '%s'", s_term);
+                        break;
+                case MATCH_QUERY_ANYWHERE:
+                default:
+                        like_match = g_strdup_printf("LIKE '%%%s%%'", s_term);
+        }
+
+        switch (query) {
+                case MEDIA_QUERY_TITLE:
+                        test = g_strdup("title");
+                        break;
+                case MEDIA_QUERY_ALBUM:
+                        test = g_strdup("album");
+                        break;
+                case MEDIA_QUERY_ARTIST:
+                        test = g_strdup("artist");
+                        break;
+                case MEDIA_QUERY_GENRE:
+                        test = g_strdup("genre");
+                        break;
+                case MEDIA_QUERY_MIME:
+                        test = g_strdup("mimetype");
+                        break;
+                default:
+                        g_warning("Invalid query '%d'", query);
+                        g_free(like_match);
+                        g_free(s_term);
+                        g_free(_results);
+                        return FALSE;
+        }
+
+        sql = g_strdup_printf("SELECT * FROM items WHERE %s %s ORDER BY track ASC, id ASC %s;",
+                test, like_match, limit);
+
+        g_free(test);
+        g_free(like_match);
+        g_free(limit);
+        g_free(s_term);
+
+        g_mutex_lock(&_lock);
+        stat = sqlite3_prepare_v2(self->priv->db, (const char *)sql,
+                -1, &stmt, NULL);
+        if (stat != SQLITE_OK) {
+                g_error("Failed to prepare SQL statement");
+                sqlite3_finalize(stmt);
+                g_mutex_unlock(&_lock);
+                g_free(sql);
+                g_ptr_array_free(_results, TRUE);
+                return FALSE;
+        }
+
+        stat = sqlite3_step(stmt);
+        while (stat == SQLITE_ROW) {
+                should_append = TRUE;
+
+                /* We have data to process */
+                info = new_media_info(stmt);
+
+                if (info == NULL){
+                        should_append = FALSE;
+                }
+                else {
+                        for (i = 0; i < _results->len; i++){
+                                cmp = (MediaInfo*)_results->pdata[i];
+                                if (g_str_equal(cmp->path, info->path)){
+                                        should_append = FALSE;
+                                }
+                        }
+                }
+
+                if (should_append){
+                        g_ptr_array_add(_results, info);
+                }
+
+                /* Continue. */
+                stat = sqlite3_step(stmt);
+        }
+        if (stat == SQLITE_ERROR) {
+                g_error("SQL error: %s", sqlite3_errmsg(self->priv->db));
+        }
+
+        /* Wrap up */
+        sqlite3_finalize(stmt);
+        g_mutex_unlock(&_lock);
+        g_free(sql);
+
         /* No results */
         if (_results->len < 1) {
                 g_ptr_array_free(_results, TRUE);
-                return ret;
+                return FALSE;
         }
-        ret = TRUE;
+
         *results = _results;
-        g_mutex_unlock(&_lock);
-        return ret;
+        return TRUE;
 }
 
 /** PRIVATE **/
-static gboolean budgie_db_serialize(MediaInfo *info, uint8_t **target)
-{
-        uint8_t* data = NULL;
-        gboolean ret = FALSE;
-        size_t length = 0;
-        size_t size = 0;
-        size_t offset = 0;
-
-        /* 6 member fields */
-        if (info->title) {
-                size = strlen(info->title)+1;
-        }
-        if (info->artist) {
-                size += strlen(info->artist)+1;
-        }
-        if (info->album) {
-                size += strlen(info->album)+1;
-        }
-        if (info->band) {
-                size += strlen(info->band)+1;
-        }
-        if (info->genre) {
-                size += strlen(info->genre)+1;
-        }
-        size += strlen(info->mime)+1;
-
-        /* 6 size fields */
-        size += sizeof(unsigned int)*6;
-
-        data = malloc(size);
-        if (!data) {
-                goto end;
-        }
-
-        /* Title */
-        if (info->title) {
-                length = strlen(info->title)+1;
-        } else {
-                length = 0;
-        }
-        memcpy(data, &length, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (info->title) {
-                memcpy(data+offset, info->title, length);
-        }
-        offset += length;
-
-        /* Artist */
-        if (info->artist) {
-                length = strlen(info->artist)+1;
-        } else {
-                length = 0;
-        }
-        memcpy(data+offset, &length, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (info->artist) {
-                memcpy(data+offset, info->artist, length);
-        }
-        offset += length;
-
-        /* Album */
-        if (info->album) {
-                length = strlen(info->album)+1;
-        } else {
-                length = 0;
-        }
-        memcpy(data+offset, &length, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (info->album) {
-                memcpy(data+offset, info->album, length);
-        }
-        offset += length;
-
-        /* Band */
-        if (info->band) {
-                length = strlen(info->band)+1;
-        } else {
-                length = 0;
-        }
-        memcpy(data+offset, &length, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (info->band) {
-                memcpy(data+offset, info->band, length);
-        }
-        offset += length;
-
-        /* Genre */
-        if (info->genre) {
-                length = strlen(info->genre)+1;
-        } else {
-                length = 0;
-        }
-        memcpy(data+offset, &length, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (info->genre) {
-                memcpy(data+offset, info->genre, length);
-        }
-        offset += length;
-
-        /* Mime */
-        length = strlen(info->mime)+1;
-        memcpy(data+offset, &length, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        memcpy(data+offset, info->mime, length);
-
-
-        ret = TRUE;
-        *target = data;
-end:
-        if (!ret && data) {
-                free(data);
-        }
-        return ret;
-}
-
-static gboolean budgie_db_deserialize(uint8_t* source, MediaInfo **target)
-{
-        MediaInfo *ret = NULL;
-        gchar *title = NULL;
-        gchar *artist = NULL;
-        gchar *album = NULL;
-        gchar *band = NULL;
-        gchar *genre = NULL;
-        gchar *mime = NULL;
-        unsigned int title_len, artist_len;
-        unsigned int album_len, genre_len;
-        unsigned int band_len, mime_len;
-        size_t offset = 0;
-        gboolean op = FALSE;
-
-        ret = malloc(sizeof(MediaInfo));
-        if (!ret) {
-                goto end;
-        }
-
-        memset(ret, 0, sizeof(MediaInfo));
-        /* Title */
-        memcpy(&title_len, source, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (title_len > 0) {
-                title = malloc(title_len);
-                memcpy(title, source+offset, title_len);
-        }
-        offset += title_len;
-
-        /* Artist */
-        memcpy(&artist_len, source+offset, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (artist_len > 0) {
-                artist = malloc(artist_len);
-                memcpy(artist, source+offset, artist_len);
-        }
-        offset += artist_len;
-
-        /* Album */
-        memcpy(&album_len, source+offset, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (album_len > 0) {
-                album = malloc(album_len);
-                memcpy(album, source+offset, album_len);
-        }
-        offset += album_len;
-
-        /* Band */
-        memcpy(&band_len, source+offset, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (band_len > 0) {
-                band = malloc(band_len);
-                memcpy(band, source+offset, band_len);
-        }
-        offset += band_len;
-
-        /* Genre */
-        memcpy(&genre_len, source+offset, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        if (genre_len > 0) {
-                genre = malloc(genre_len);
-                memcpy(genre, source+offset, genre_len);
-        }
-        offset += genre_len;
-
-        /* Mime */
-        memcpy(&mime_len, source+offset, sizeof(unsigned int));
-        offset += sizeof(unsigned int);
-        mime = malloc(mime_len);
-        memcpy(mime, source+offset, mime_len);
-
-        offset += mime_len; /* Reserved */
-        /* Copy the data instead of exposing internals */
-        if (title) {
-                ret->title = g_strdup(title);
-        }
-        if (artist) {
-                ret->artist = g_strdup(artist);
-        }
-        if (album) {
-                ret->album = g_strdup(album);
-        }
-        if (band) {
-                ret->band = g_strdup(band);
-        }
-        if (genre) {
-                ret->genre = g_strdup(genre);
-        }
-
-        ret->mime = g_strdup(mime);
-        op = TRUE;
-        *target = ret;
-
-end:
-        if (title) {
-                free(title);
-        }
-        if (artist) {
-                free(artist);
-        }
-        if (album) {
-                free(album);
-        }
-        if (band) {
-                free(band);
-        }
-        if (genre) {
-                free(genre);
-        }
-        if (mime) {
-                free(mime);
-        }
-        return op;
-}
-
 gint budgie_db_sort(gconstpointer a, gconstpointer b)
 {
         MediaInfo* m1 = NULL;

@@ -15,7 +15,7 @@ libbudgiedb_la_CFLAGS = \
 
 libbudgiedb_la_LIBADD = \
 	$(GIO_LIBS) \
-	-lgdbm
+	-lsqlite3
 
 budgie_media_player_SOURCES = \
 	budgie-window.c \

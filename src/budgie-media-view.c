@@ -308,8 +308,10 @@ static gpointer update_db(gpointer userdata)
         self = BUDGIE_MEDIA_VIEW(userdata);
 
         /* No albums */
-        if (!budgie_db_get_all_by_field(self->db, MEDIA_QUERY_ALBUM, &albums))
+        if (!budgie_db_get_all_by_field(self->db, MEDIA_QUERY_ALBUM, &albums)) {
+                fprintf(stderr, "No albums found\n");
                 return NULL;
+        }
 
         cache = g_get_user_cache_dir();
         model = gtk_list_store_new(ALBUM_COLUMNS, G_TYPE_STRING,
@@ -549,14 +551,8 @@ static void set_display(BudgieMediaView *self, GPtrArray *results)
                 self->results = NULL;
         }
 
-        g_ptr_array_sort(results, budgie_db_sort);
-
-        /* Extract the fields */
-        /* This traverses the *whole* database. We really don't want to do this
-           if we've got a large number of songs in the collection. I think the
-           best way to deal with this issue is by not loading everything - we
-           can't *see* all the widgets at once, so don't try!
-           *****
+        /* Extract the fields.
+           results is given to us sorted (ORDER BY track ASC, id ASC)
         */
         gtk_list_store_clear(track_list->store);
 
@@ -566,6 +562,7 @@ static void set_display(BudgieMediaView *self, GPtrArray *results)
                 /* Append it */
                 gtk_list_store_insert_with_values(track_list->store, &iter, -1,
                         BUDGIE_TRACK_LIST_DB_TITLE, current->title,
+                        BUDGIE_TRACK_LIST_DB_TRACK, current->track_no,
                         BUDGIE_TRACK_LIST_DB_ARTIST, current->artist,
                         BUDGIE_TRACK_LIST_DB_ALBUM, current->album,
                         BUDGIE_TRACK_LIST_DB_BAND, current->band,

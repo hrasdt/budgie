@@ -54,7 +54,6 @@ G_DEFINE_TYPE_WITH_PRIVATE(BudgieWindow, budgie_window, G_TYPE_OBJECT)
 /* BudgieWindow prototypes */
 static void init_styles(BudgieWindow *self);
 
-static void store_media(gpointer data1, gpointer data2);
 static gboolean load_media_t(gpointer data);
 static gpointer load_media(gpointer data);
 
@@ -660,17 +659,6 @@ static void _gst_error_cb(GstBus *bus, GstMessage *msg, gpointer userdata)
         budgie_status_area_set_media(BUDGIE_STATUS_AREA(self->status), NULL);
 }
 
-static void store_media(gpointer data1, gpointer data2)
-{
-        MediaInfo *info;
-        BudgieWindow *self;
-
-        info = (MediaInfo*)data1;
-        self = BUDGIE_WINDOW(data2);
-
-        budgie_db_store_media(self->db, info);
-}
-
 static gboolean load_media_t(gpointer data)
 {
         BudgieWindow *self;
@@ -701,10 +689,12 @@ static gpointer load_media(gpointer data)
         length = g_strv_length(self->media_dirs);
         mimes[0] = "audio/";
         mimes[1] = "video/";
-        for (i=0; i < length; i++)
+        for (i=0; i < length; i++) {
                 search_directory(self->media_dirs[i], &tracks, 2, mimes);
+        }
 
-        g_slist_foreach(tracks, store_media, self);
+        /* Update the database with the tracklist */
+        budgie_db_update(self->db, tracks);
         g_slist_free_full(tracks, free_media_info);
 
         budgie_control_bar_set_action_enabled(BUDGIE_CONTROL_BAR(self->toolbar),

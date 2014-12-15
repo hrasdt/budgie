@@ -97,6 +97,7 @@ static void budgie_track_list_init(BudgieTrackList *self)
         /* Construct the track list box. */
         self->store = gtk_list_store_new(BUDGIE_TRACK_LIST_DB_NUM_FIELDS,
                 G_TYPE_STRING, /* Title */
+                G_TYPE_INT, /* Track no */
                 G_TYPE_STRING, /* Artist/author */
                 G_TYPE_STRING, /* Album */
                 G_TYPE_STRING, /* Band */
@@ -120,6 +121,7 @@ static void budgie_track_list_init(BudgieTrackList *self)
                 NULL);
         gtk_tree_view_append_column(GTK_TREE_VIEW(list), column);
 
+        /* Title */
         renderer = gtk_cell_renderer_text_new();
         column = gtk_tree_view_column_new_with_attributes("Title",
                 renderer,
@@ -127,6 +129,7 @@ static void budgie_track_list_init(BudgieTrackList *self)
                 NULL);
         gtk_tree_view_append_column(GTK_TREE_VIEW(list), column);
 
+        /* Artist */
         renderer = gtk_cell_renderer_text_new();
         column = gtk_tree_view_column_new_with_attributes("Artist",
                 renderer,

@@ -58,6 +58,8 @@ static MediaInfo* media_from_file(gchar *path, GFileInfo *file_info, const gchar
         }
 
         /* Set fields from taglib */
+        media->track_no = taglib_tag_track(tag);
+
         ktmp = taglib_tag_title(tag);
         if (ktmp && strlen(ktmp) != 0) {
                 media->title = g_strdup(ktmp);
